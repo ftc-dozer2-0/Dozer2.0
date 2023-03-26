@@ -1,7 +1,6 @@
 """Provides commands that pull information from First Q&A Form."""
 import discord
 import aiohttp
-import asyncio
 
 from bs4 import BeautifulSoup
 from discord.ext import commands
@@ -18,8 +17,8 @@ class QA(Cog):
         self.bot = bot
 
     @commands.hybrid_command(name="qa", aliases=["ftcqa", "ftcqaforum", "qaforum"], pass_context=True)
-    @bot_has_permissions(embed_links = True)
-    @app_commands.describe(question = "The number of the question you want to look up")
+    @bot_has_permissions(embed_links=True)
+    @app_commands.describe(question="The number of the question you want to look up")
     async def qa(self, ctx, question: int):
         """
         Shows Answers from the FTC Q&A
@@ -43,21 +42,21 @@ class QA(Cog):
             a = " ".join(a.split())
 
             embed = discord.Embed(
-                title = a[:a.find(" Q: ")],
-                url = "https://ftc-qa.firstinspires.org/qa/" + str(question),
-                color = discord.Color.blue())
+                title=a[:a.find(" Q: ")],
+                url="https://ftc-qa.firstinspires.org/qa/" + str(question),
+                color=discord.Color.blue())
 
-            embed.add_field(name = "Question",
-                            value = a[a.find(" Q: ") + 1:a.find(" A: ")],
-                            inline = False)
-            embed.add_field(name = "Answer",
-                            value = a[a.find(" A: ") + 1:a.find(" ( Asked by ")],
-                            inline = False)
+            embed.add_field(name="Question",
+                            value=a[a.find(" Q: ") + 1:a.find(" A: ")],
+                            inline=False)
+            embed.add_field(name="Answer",
+                            value=a[a.find(" A: ") + 1:a.find(" ( Asked by ")],
+                            inline=False)
 
             embed.set_footer(
-                text = a[a.find(" ( Asked by ") + 1:])
+                text=a[a.find(" ( Asked by ") + 1:])
 
-            await ctx.send(embed = embed)
+            await ctx.send(embed=embed)
 
         else:
             a = "That question was not answered or does not exist."

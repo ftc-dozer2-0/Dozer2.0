@@ -7,7 +7,6 @@ import traceback
 import discord
 import aiohttp
 from discord.ext import commands
-from discord import app_commands
 
 import utils
 
@@ -38,7 +37,7 @@ elif not hasattr(commands, "Cog"):
                        "old and lacks discord.ext.commands.Cog, please reinstall it and try again.")
     sys.exit(1)
 
-MY_GUILD = discord.Object(id = 1088700196675919872)  # temp testing server, will switch to ftc discord id later
+MY_GUILD = discord.Object(id=1088700196675919872)  # temp testing server, will switch to ftc discord id later
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
@@ -189,6 +188,7 @@ class Dozer(commands.Bot):
         await orm.close()
         await self.http_session.close()
         self.loop.stop()
+
 
 '''    @bot.tree.context_menu(name = "Report message to mods")
     async def report_message(interaction: discord.Interaction, message: discord.Message):

@@ -28,19 +28,19 @@ class General(Cog):
             location = 'DMs'
         else:
             location = 'the **%s** server' % ctx.guild.name
-        response = await ctx.send(f'Pong! We\'re in {location}.', ephemeral = True)
+        response = await ctx.send(f'Pong! We\'re in {location}.', ephemeral=True)
         delay = response.created_at - ctx.message.created_at
         await response.edit(
-            content = response.content + f'\nTook {delay.seconds * 1000 + delay.microseconds // 1000} ms to respond.')
+            content=response.content + f'\nTook {delay.seconds * 1000 + delay.microseconds // 1000} ms to respond.')
 
     ping.example_usage = """
     `{prefix}ping` - Calculate and display the bot's response time
     """
 
     @cooldown(1, 10, BucketType.channel)
-    @commands.command(name = 'help', aliases = ['about', 'plowie', 'yikes', 'commands', 'command', 'info'])
-    @bot_has_permissions(add_reactions = True, embed_links = True,
-                         read_message_history = True)  # Message history is for internals of paginate()
+    @commands.command(name='help', aliases=['about', 'plowie', 'yikes', 'commands', 'command', 'info'])
+    @bot_has_permissions(add_reactions=True, embed_links=True,
+                         read_message_history=True)  # Message history is for internals of paginate()
     async def base_help(self, ctx, *target):
         """Show this message."""
         if not target:  # No commands - general help
@@ -70,28 +70,28 @@ class General(Cog):
 
     async def _help_all(self, ctx):
         """Gets the help message for all commands."""
-        info = discord.Embed(title = f'{self.name}: Info',
-                             description = 'The guild management bot for the FTC server' if self.name == "FTC Server Dozer" else
+        info = discord.Embed(title=f'{self.name}: Info',
+                             description='The guild management bot for the FTC server' if self.name == "FTC Server Dozer" else
                              'A guild management bot for FIRST Discord servers',
-                             color = discord.Color.blue())
-        info.set_thumbnail(url = self.bot.user.avatar.url)
-        info.add_field(name = 'About',
-                       value = f"{self.name}: A collaborative bot for the FIRST Discord community, rebuilt by the FTC "
-                               "Dozer 2.0 Project Team.")
-        info.add_field(name = f'About `{ctx.prefix}{ctx.invoked_with}`', value = inspect.cleandoc(f"""
+                             color=discord.Color.blue())
+        info.set_thumbnail(url=self.bot.user.avatar.url)
+        info.add_field(name='About',
+                       value=f"{self.name}: A collaborative bot for the FIRST Discord community, rebuilt by the FTC "
+                             "Dozer 2.0 Project Team.")
+        info.add_field(name=f'About `{ctx.prefix}{ctx.invoked_with}`', value=inspect.cleandoc(f"""
         This command can show info for all commands, a specific command, or a category of commands.
         Use `{ctx.prefix}{ctx.invoked_with} {ctx.invoked_with}` for more information.
-        """), inline = False)
-        info.add_field(name = 'Differences from Upstream Dozer', value = "[These WERE documented in detail here]"
-                                                                         "(https://github.com/guineawheek/Dozer/blob/development/EXTRA_FEATURES.md)")
-        info.add_field(name = 'Support',
-                       value = "Join our development server at haha funny or ping @skhynix#1554 for "
-                               "support, to help with development, or if you have any questions or comments!")
-        info.add_field(name = "Open Source",
-                       value = f"{self.name} is open source! Feel free to view and contribute to our Python code "
-                               "[on Github](https://github.com/ftc-dozer2-0/Dozer2.0) | Unfortunately, while we're "
-                               "rebuilding the bot, the repo is private.")
-        info.set_footer(text = f'{self.name} Help | all commands | Info page')
+        """), inline=False)
+        info.add_field(name='Differences from Upstream Dozer', value="[These WERE documented in detail here]"
+                                                                     "(https://github.com/guineawheek/Dozer/blob/development/EXTRA_FEATURES.md)")
+        info.add_field(name='Support',
+                       value="Join our development server at haha funny or ping @skhynix#1554 for "
+                             "support, to help with development, or if you have any questions or comments!")
+        info.add_field(name="Open Source",
+                       value=f"{self.name} is open source! Feel free to view and contribute to our Python code "
+                             "[on Github](https://github.com/ftc-dozer2-0/Dozer2.0) | Unfortunately, while we're "
+                             "rebuilding the bot, the repo is private.")
+        info.set_footer(text=f'{self.name} Help | all commands | Info page')
         await self._show_help(ctx, info, f'{self.name}: Commands', '', 'all commands', ctx.bot.commands)
 
     async def _help_command(self, ctx, command):
@@ -100,15 +100,15 @@ class General(Cog):
             fqn = f"{command.full_parent_name}[{'|'.join([command.name] + list(command.aliases))}]"
         else:
             fqn = command.qualified_name
-        info = discord.Embed(title = f'Command: {ctx.prefix}{fqn} {command.signature}',
-                             description = command.help or (
+        info = discord.Embed(title=f'Command: {ctx.prefix}{fqn} {command.signature}',
+                             description=command.help or (
                                  None if command.example_usage else 'No information provided.'),
-                             color = discord.Color.blue())
+                             color=discord.Color.blue())
         usage = command.example_usage
         if usage is not None:
-            info.add_field(name = 'Usage', value = usage.format(prefix = ctx.prefix, name = ctx.invoked_with),
-                           inline = False)
-        info.set_footer(text = f'{self.name} Help | {command.qualified_name} command | Info')
+            info.add_field(name='Usage', value=usage.format(prefix=ctx.prefix, name=ctx.invoked_with),
+                           inline=False)
+        info.set_footer(text=f'{self.name} Help | {command.qualified_name} command | Info')
 
         # need to figure out how to walk command.commands correctly
         def all_subcommands(cmd):
@@ -118,15 +118,15 @@ class General(Cog):
 
         await self._show_help(ctx, info, 'Subcommands: {prefix}{name} {signature}', '',
                               '{command.qualified_name!r} command',
-                              all_subcommands(command), command = command, name = command.qualified_name,
-                              signature = command.signature)
+                              all_subcommands(command), command=command, name=command.qualified_name,
+                              signature=command.signature)
 
     async def _help_cog(self, ctx, cog):
         """Gets the help message for one cog."""
         await self._show_help(ctx, None, 'Category: {cog_name}', inspect.cleandoc(cog.__doc__ or ''),
                               '{cog_name!r} category',
                               (command for command in ctx.bot.commands if command.cog is cog),
-                              cog_name = type(cog).__name__)
+                              cog_name=type(cog).__name__)
 
     async def _show_help(self, ctx, start_page, title, description, footer, commands, **format_args):
         """Creates and sends a template help message, with arguments filled in."""
@@ -134,13 +134,13 @@ class General(Cog):
         footer = f'{self.name} Help | {footer} | Page {"{page_num} of {len_pages}"}'
         # Page info is inserted as a parameter so page_num and len_pages aren't evaluated now
         if commands:
-            command_chunks = list(chunk(sorted(commands, key = lambda cmd: cmd.qualified_name), 4))
+            command_chunks = list(chunk(sorted(commands, key=lambda cmd: cmd.qualified_name), 4))
             format_args['len_pages'] = len(command_chunks)
             pages = []
             for page_num, page_commands in enumerate(command_chunks):
                 format_args['page_num'] = page_num + 1
-                page = discord.Embed(title = title.format(**format_args),
-                                     description = description.format(**format_args), color = discord.Color.blue())
+                page = discord.Embed(title=title.format(**format_args),
+                                     description=description.format(**format_args), color=discord.Color.blue())
                 for command in page_commands:
                     if command.short_doc:
                         embed_value = command.short_doc
@@ -151,49 +151,49 @@ class General(Cog):
                     if command.aliases:
                         cmd_names = "|".join([command.name] + list(command.aliases))
                         page.add_field(
-                            name = f"{ctx.prefix}{command.full_parent_name}[{cmd_names}] {command.signature}",
-                            value = embed_value,
-                            inline = False)
+                            name=f"{ctx.prefix}{command.full_parent_name}[{cmd_names}] {command.signature}",
+                            value=embed_value,
+                            inline=False)
                     else:
-                        page.add_field(name = f"{ctx.prefix}{command.qualified_name} {command.signature}",
-                                       value = embed_value, inline = False)
+                        page.add_field(name=f"{ctx.prefix}{command.qualified_name} {command.signature}",
+                                       value=embed_value, inline=False)
 
-                page.set_footer(text = footer.format(**format_args))
+                page.set_footer(text=footer.format(**format_args))
                 pages.append(page)
 
             if start_page is not None:
                 pages.append({'info': start_page})
 
             if len(pages) == 1:
-                await ctx.send(embed = pages[0])
+                await ctx.send(embed=pages[0])
             elif start_page is not None:
                 info_emoji = '\N{INFORMATION SOURCE}'
-                p = Paginator(ctx, (info_emoji, ...), pages, start = 'info',
-                              auto_remove = ctx.channel.permissions_for(ctx.me))
+                p = Paginator(ctx, (info_emoji, ...), pages, start='info',
+                              auto_remove=ctx.channel.permissions_for(ctx.me))
                 async for reaction in p:
                     if reaction == info_emoji:
                         p.go_to_page('info')
             else:
-                await paginate(ctx, pages, auto_remove = ctx.channel.permissions_for(ctx.me))
+                await paginate(ctx, pages, auto_remove=ctx.channel.permissions_for(ctx.me))
         elif start_page:  # No commands - command without subcommands or empty cog - but a usable info page
-            await ctx.send(embed = start_page)
+            await ctx.send(embed=start_page)
         else:  # No commands and no info page
             format_args['len_pages'] = 1
             format_args['page_num'] = 1
-            embed = discord.Embed(title = title.format(**format_args), description = description.format(**format_args),
-                                  color = discord.Color.blue())
-            embed.set_footer(text = footer.format(**format_args))
-            await ctx.send(embed = embed)
+            embed = discord.Embed(title=title.format(**format_args), description=description.format(**format_args),
+                                  color=discord.Color.blue())
+            embed.set_footer(text=footer.format(**format_args))
+            await ctx.send(embed=embed)
 
-    @has_permissions(change_nickname = True)
-    @commands.hybrid_command(name = 'nick', aliases = ['nickname', 'setnick', 'setnickname', 'changename', 'changenick',
-                                                       'changenickname'])
-    @app_commands.describe(nicktochangeto = 'Your new nickname')
+    @has_permissions(change_nickname=True)
+    @commands.hybrid_command(name='nick', aliases=['nickname', 'setnick', 'setnickname', 'changename', 'changenick',
+                                                   'changenickname'])
+    @app_commands.describe(nicktochangeto='Your new nickname')
     async def nick(self, ctx, *, nicktochangeto):
         """Allows a member to change their nickname."""
         if ctx.author.top_role >= ctx.guild.me.top_role:
             await ctx.send(f"{ctx.author.mention}, your top role is the same as or higher than mine!")
-        await ctx.author.edit(nick = nicktochangeto[:32])
+        await ctx.author.edit(nick=nicktochangeto[:32])
         await ctx.send("Nick successfully changed to " + nicktochangeto[:32])
         if len(nicktochangeto) > 32:
             await ctx.send("Warning: truncated nickname to 32 characters")
@@ -202,7 +202,7 @@ class General(Cog):
     `{prefix}nick cool nickname` - set your nickname to "cool nickname" 
     """
 
-    @commands.hybrid_command(name = 'invite', aliases = ['botinvite', 'botinviteurl', 'botinvitelink'])
+    @commands.hybrid_command(name='invite', aliases=['botinvite', 'botinviteurl', 'botinvitelink'])
     async def invite(self, ctx):
         """
         Display the bot's invite link.
@@ -223,17 +223,17 @@ class General(Cog):
     `{prefix}invite` - display the bot's invite link. 
     """
 
-    @has_permissions(create_instant_invite = True)
-    @bot_has_permissions(create_instant_invite = True)
-    @app_commands.describe(num = 'The number of invites to create',
-                           hours = 'The number of hours the invite should last')
-    @commands.hybrid_command(name = 'serverinvite', aliases = ['serverinvitelink', 'serverinviteurl', 'serverinv'])
-    async def invites(self, ctx, num, hours = 24):
+    @has_permissions(create_instant_invite=True)
+    @bot_has_permissions(create_instant_invite=True)
+    @app_commands.describe(num='The number of invites to create',
+                           hours='The number of hours the invite should last')
+    @commands.hybrid_command(name='serverinvite', aliases=['serverinvitelink', 'serverinviteurl', 'serverinv'])
+    async def invites(self, ctx, num, hours=24):
         """
         Generates a set number of single use invites.
         """
         # settings = session.query(WelcomeChannel).filter_by(id=ctx.guild.id).one_or_none()
-        config = await self.bot.cogs['Moderation'].guild_config.query_one(guild_id = ctx.guild.id)
+        config = await self.bot.cogs['Moderation'].guild_config.query_one(guild_id=ctx.guild.id)
         if config is None or not config.welcome_channel_id:
             await ctx.send(
                 f"There is no welcome channel set. Please set one using `{ctx.prefix}serverconfig welcome channel` and try again.")
@@ -246,8 +246,8 @@ class General(Cog):
                 return
             text = ""
             for i in range(int(num)):
-                invite = await invitechannel.create_invite(max_age = hours * 3600, max_uses = 1, unique = True,
-                                                           reason = f"Autogenerated by {ctx.author}")
+                invite = await invitechannel.create_invite(max_age=hours * 3600, max_uses=1, unique=True,
+                                                           reason=f"Autogenerated by {ctx.author}")
                 text += f"Invite {i + 1}: <{invite.url}>\n"
             await ctx.send(text)
 

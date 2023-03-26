@@ -6,7 +6,6 @@ import discord
 from discord import app_commands
 from discord.ext.commands import cooldown, BucketType, guild_only
 from discord.ext import commands
-from ._utils import *
 
 
 class Fun(commands.Cog):
@@ -17,8 +16,8 @@ class Fun(commands.Cog):
 
     @guild_only()
     @cooldown(1, 20, BucketType.channel)
-    @commands.hybrid_command(name = "fight", aliases = ["duel"], pass_context = True)
-    @app_commands.describe(opponent = "The user you want to fight")
+    @commands.hybrid_command(name="fight", aliases=["duel"], pass_context=True)
+    @app_commands.describe(opponent="The user you want to fight")
     async def fight(self, ctx, opponent: discord.Member):
         """Start a fight with another user."""
         responses = [

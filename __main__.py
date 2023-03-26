@@ -6,7 +6,8 @@ import sys
 import asyncio
 
 # import uvloop
-from asyncdb.orm import orm
+
+from bot import Dozer
 
 # switch to uvloop for event loops (not supported on windows) uvloop.EventLoopPolicy() instead of
 # WindowsSelectorEventLoopPolicy()
@@ -59,8 +60,6 @@ if 'discord_token' not in config:
 
 if sys.version_info < (3, 6):
     sys.exit('Dozer requires Python 3.6 or higher to run. This is version %s.' % '.'.join(sys.version_info[:3]))
-
-from bot import Dozer
 
 bot = Dozer(config)
 

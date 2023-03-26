@@ -1,20 +1,14 @@
 """A series of commands that talk to The Blue Alliance."""
-import datetime
 import io
 import itertools
-
 from pprint import pformat
-from urllib.parse import quote as urlquote, urljoin
+from urllib.parse import quote as urlquote
 
-import discord
-from discord.ext.commands import BadArgument
-import googlemaps
-import async_timeout
 import aiotba
-import pendulum
-from geopy.geocoders import Nominatim
-from timezonefinder import TimezoneFinder
+import discord
 from discord.ext import commands
+from discord.ext.commands import BadArgument
+from timezonefinder import TimezoneFinder
 
 from cogs._utils import *
 
@@ -26,7 +20,7 @@ class TBA(Cog):
     def __init__(self, bot):
         super().__init__(bot)
         tba_config = bot.config['tba']
-        #self.gmaps_key = bot.config['gmaps_key']
+        # self.gmaps_key = bot.config['gmaps_key']
         self.session = aiotba.TBASession(tba_config['key'], self.bot.http_session)
         self.tzf = TimezoneFinder()
         self.bot = bot
@@ -78,7 +72,8 @@ class TBA(Cog):
         if team_district_data:
             e.add_field(name='District', value=f"{team_district.display_name} [{team_district.abbreviation.upper()}]")
         e.add_field(name='Championship',
-                    value=team_data.home_championship[max(team_data.home_championship.keys())] if team_data.home_championship else "No data")
+                    value=team_data.home_championship[
+                        max(team_data.home_championship.keys())] if team_data.home_championship else "No data")
         # e.add_field(name='TBA Link', value='https://www.thebluealliance.com/team/{}'.format(team_num))
         e.set_footer(text='Triggered by ' + ctx.author.display_name)
         await ctx.send(embed=e, ephemeral=True)
@@ -87,7 +82,7 @@ class TBA(Cog):
     `{prefix}tba team 4131` - show information on team 4131, the Iron Patriots
     """
 
-    @tba.command(name = 'events', alias=['eventsfor', 'eventfor', 'event'])
+    @tba.command(name='events', alias=['eventsfor', 'eventfor', 'event'])
     @bot_has_permissions(embed_links=True)
     async def eventsfor(self, ctx, team_num: int, year: int = None):
         """Get the events a team is registered for a given year. Defaults to current (or upcoming) year."""
@@ -111,7 +106,7 @@ class TBA(Cog):
     `{prefix}tba eventsfor 1533` - show the currently registered events for team 1533, Triple Strange
     """
 
-    @tba.command(name = 'media', alias=['social', 'socials', 'socialmedia', 'medias', 'medialinks', 'medialink'])
+    @tba.command(name='media', alias=['social', 'socials', 'socialmedia', 'medias', 'medialinks', 'medialink'])
     @bot_has_permissions(embed_links=True)
     async def media(self, ctx, team_num: int, year: int = None):
         """Get media of a team for a given year. Defaults to current year."""
@@ -164,7 +159,8 @@ class TBA(Cog):
             if len(pages):
                 await paginate(ctx, pages)
             else:
-                await ctx.send(f"Unfortunately, there doesn't seem to be any media for team {team_num} in {year}...", ephemeral=True)
+                await ctx.send(f"Unfortunately, there doesn't seem to be any media for team {team_num} in {year}...",
+                               ephemeral=True)
 
         except aiotba.http.AioTBAError:
             raise BadArgument("Couldn't find data for team {}".format(team_num))
@@ -275,6 +271,8 @@ class TBA(Cog):
     `{prefix}timezone frc 1619` - show the current weather for FRC team 1619, Up-A-Creek Robotics
     `{prefix}timezone ftc 11260` - show the current weather for FTC team 11260, Up-A-Creek Robotics
     """
+
+
 # timezone is disabled due to its use of gmaps
 '''
     @command()
@@ -333,6 +331,7 @@ class TBA(Cog):
     `{prefix}timezone ftc 15470` - show the local time of FTC team 15470
     """
 '''
+
 
 async def setup(bot):
     """Adds the TBA cog to the bot"""

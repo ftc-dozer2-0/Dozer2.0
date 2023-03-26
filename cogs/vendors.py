@@ -1,6 +1,5 @@
 # pylint: skip-file
 """incomplete cog, should've been stuck on another branch"""
-import discord
 import aiohttp
 import async_timeout
 from bs4 import BeautifulSoup
@@ -10,7 +9,7 @@ from discord.ext import commands
 class VendorSearcher:
     base_url = ""
 
-    def __init__(self, bot: commands.Bot, http_session = None) -> None:
+    def __init__(self, bot: commands.Bot, http_session=None) -> None:
         if not http_session:
             http_session = aiohttp.ClientSession()
         self.http = http_session

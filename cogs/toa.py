@@ -21,9 +21,10 @@ def to_season_key(base_year):
 
 class TOA(Cog):
     """TOA commands"""
+
     def __init__(self, bot):
         super().__init__(bot)
-        #self.parser = TOASession(bot.config['toa']['key'], bot.config['toa']['app_name'], bot.http_session)
+        # self.parser = TOASession(bot.config['toa']['key'], bot.config['toa']['app_name'], bot.http_session)
 
     @staticmethod
     def get_current_season(as_year=False):
@@ -31,7 +32,8 @@ class TOA(Cog):
         today = datetime.datetime.today()
         year = today.year
         # ftc kickoff is always the 2nd saturday of september (except when on 9/11)
-        kickoff = [d for d in [datetime.datetime(year=year, month=9, day=i) for i in range(8, 15)] if d.weekday() == 5][0]
+        kickoff = [d for d in [datetime.datetime(year=year, month=9, day=i) for i in range(8, 15)] if d.weekday() == 5][
+            0]
 
         if kickoff > today:
             return year - 1 if as_year else to_season_key(year - 1)
@@ -79,7 +81,8 @@ class TOA(Cog):
     async def get_teamdata(self, team_num: int):
         """Obtains team data from a separate non-TOA api returning ftc_teams.pickle.gz-like data"""
         if self.bot.config['toa']['teamdata_url']:
-            async with self.bot.http_session.get(urljoin(self.bot.config['toa']['teamdata_url'], str(team_num))) as response, \
+            async with self.bot.http_session.get(
+                    urljoin(self.bot.config['toa']['teamdata_url'], str(team_num))) as response, \
                     async_timeout.timeout(5) as _:
                 return await response.json() if response.status < 400 else {}
         else:
@@ -105,7 +108,8 @@ class TOA(Cog):
                 }]
             }
 
-    @commands.hybrid_group(invoke_without_command=True, case_insensitive=True, aliases=['theorangealliance', 'orangealliance'], name = 'toa')
+    @commands.hybrid_group(invoke_without_command=True, case_insensitive=True,
+                           aliases=['theorangealliance', 'orangealliance'], name='toa')
     async def toa(self, ctx, team_num: int, season: str = None):
         """
         Get FTC-related information from The Orange Alliance.
@@ -126,16 +130,16 @@ class TOA(Cog):
         p = ctx.prefix
         e = discord.Embed(color=embed_color, title="TOA Data TOS Compliance Disclaimer")
         e.description = f"The data returned by most `{p}toa` subcommands is in fact downloaded from __The " \
-            f"Orange Alliance.__"
+                        f"Orange Alliance.__"
         e.add_field(name='However...', value="Under certain configurations of this Dozer-like, " +
-                    f"`{p}toa team` may return data that is pulled from " +
-                    "a mirror of FIRST's registration data, updated biweekly.", inline=False)
+                                             f"`{p}toa team` may return data that is pulled from " +
+                                             "a mirror of FIRST's registration data, updated biweekly.", inline=False)
         why = """
 Using data that is sourced **_directly from FIRST's servers_** has some benefits.
 It allows such a Dozer-like to ensure that it's returned data is both **accurate and up to date.**
 
 """ + "TOA often does not pick up on the registration of new teams for months, and for at least a period of time, " \
-        "would return **incorrect data** on older teams."
+      "would return **incorrect data** on older teams."
         e.add_field(name='Why?', value=why, inline=False)
 
         addn = """TOA will not (and likely never) return registration data for previous seasons,
@@ -149,7 +153,8 @@ and locations of teams who may have moved around or renamed over the years. """.
 
     @toa.command()
     @bot_has_permissions(embed_links=True)
-    @app_commands.describe(team_num="The team number to look up", season="The season you want to see the team's info for")
+    @app_commands.describe(team_num="The team number to look up",
+                           season="The season you want to see the team's info for")
     async def team(self, ctx, team_num: int, season: str = None):
         """Get information on an FTC team by number."""
         # Fun fact: this no longer actually queries TOA. It queries a server that provides FIRST data.
@@ -169,7 +174,9 @@ and locations of teams who may have moved around or renamed over the years. """.
             if not self.bot.config['toa']['teamdata_url'] and year is not None:
                 await ctx.send("This bot does not have past team registration data available!", ephemeral=True)
             else:
-                await ctx.send(f"This team did not compete in the {self.fmt_season_code(to_season_key(int(year)))} season!", ephemeral=True)
+                await ctx.send(
+                    f"This team did not compete in the {self.fmt_season_code(to_season_key(int(year)))} season!",
+                    ephemeral=True)
             return
 
         # many team entries lack a valid url
@@ -181,13 +188,14 @@ and locations of teams who may have moved around or renamed over the years. """.
                           url=f'https://ftc-events.firstinspires.org/{self.get_current_season(as_year=True)}/team/{team_num}')
         e.add_field(name='Name', value=season_data["name"].strip() or "_ _")  # renders as blank on clients
         e.add_field(name='Rookie Year', value=team_data['rookie_year'])
-        e.add_field(name='Location', value=', '.join((season_data["city"], season_data["state_prov"], season_data["country"])))
+        e.add_field(name='Location',
+                    value=', '.join((season_data["city"], season_data["state_prov"], season_data["country"])))
         e.add_field(name='Website', value=website or 'n/a')
         if season_data["motto"].strip():
             e.add_field(name='Motto', value=season_data['motto'])
         # e.add_field(name='Team
         # Info Page', value=f'https://www.theorangealliance.org/teams/{team_num}')
-        #e.set_footer(text=f'May contain data from FIRST with TOA data. For more information, see '
+        # e.set_footer(text=f'May contain data from FIRST with TOA data. For more information, see '
         #                  f'{ctx.prefix}toa disclaimer')
         await ctx.send('', embed=e, ephemeral=True)
 
@@ -199,7 +207,8 @@ and locations of teams who may have moved around or renamed over the years. """.
 
     @toa.command()
     @bot_has_permissions(embed_links=True)
-    @app_commands.describe(team_num="The team number to look up", season="The season you want to see the team's info for")
+    @app_commands.describe(team_num="The team number to look up",
+                           season="The season you want to see the team's info for")
     async def events(self, ctx, team_num: int, season=None):
         """Get events for an ftc team defaulting to current year"""
         season = to_season_key(self.convert_season(season)) or self.get_current_season()
@@ -211,7 +220,8 @@ and locations of teams who may have moved around or renamed over the years. """.
             return
         e = discord.Embed(color=embed_color,
                           title=f"Events for FTC team {team_num} in {fmt_season}:")
-        for event in sorted(map(lambda e: e.event, events), key=lambda e: e.start_date, reverse=True):  # type: aiotoa.models.Event
+        for event in sorted(map(lambda e: e.event, events), key=lambda e: e.start_date,
+                            reverse=True):  # type: aiotoa.models.Event
             # tweak formatting a small bit
             event.region_key = f"[{event.region_key}]" if event.region_key != "CMP" else ""
             date_str = event.start_date.strftime(f"%B {event.start_date.day}, %Y")
@@ -230,7 +240,8 @@ and locations of teams who may have moved around or renamed over the years. """.
 
     @toa.command()
     @bot_has_permissions(embed_links=True)
-    @app_commands.describe(team_num="The team number to look up", season="The season you want to see the team's info for")
+    @app_commands.describe(team_num="The team number to look up",
+                           season="The season you want to see the team's info for")
     async def awards(self, ctx, team_num: int, season=None):
         """TODO: display awards command"""
         season = to_season_key(self.convert_season(season)) or self.get_current_season()

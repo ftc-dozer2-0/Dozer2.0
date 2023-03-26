@@ -1,7 +1,6 @@
 """Maintenance commands for bot developers"""
 
 import os
-import sys
 
 from discord.ext.commands import NotOwner
 from bot import dozer_logger
@@ -14,6 +13,7 @@ class Maintenance(Cog):
     Commands for performing maintenance on the bot.
     These commands are restricted to bot developers.
     """
+
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
         self.bot = bot
@@ -37,7 +37,7 @@ class Maintenance(Cog):
     `{prefix}shutdown` - stop the bot
     """
 
-    @commands.hybrid_command(name = "restart", aliases = ["reboot"])
+    @commands.hybrid_command(name="restart", aliases=["reboot"])
     async def restart(self, ctx):
         """Restarts the bot."""
         await ctx.send('Restarting', ephemeral=True)
@@ -47,7 +47,7 @@ class Maintenance(Cog):
     `{prefix}restart` - restart the bot
     """
 
-    @commands.hybrid_command(name = "update", aliases = ["pull"])
+    @commands.hybrid_command(name="update", aliases=["pull"])
     async def update(self, ctx):
         """
         Pulls code from GitHub and restarts.
