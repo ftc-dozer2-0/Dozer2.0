@@ -52,7 +52,7 @@ if os.path.isfile(config_file):
         config.update(json.load(f))
 
 with open('config.json', 'w') as f:
-    json.dump(config, f, indent = '\t')
+    json.dump(config, f, indent='\t')
 
 if 'discord_token' not in config:
     sys.exit('Discord token must be supplied in configuration - please add one to config.json')
@@ -69,7 +69,7 @@ async def main():
     for ext in os.listdir('dozer/cogs'):
         if not ext.startswith(('_', '.')):
             await bot.load_extension('dozer.cogs.' + ext[:-3])  # Remove '.py' from the end of the filename
-    await orm.connect(dsn = config['db_url'])
+    await orm.connect(dsn=config['db_url'])
     await orm.Model.create_all_tables()
     await bot.run()
 

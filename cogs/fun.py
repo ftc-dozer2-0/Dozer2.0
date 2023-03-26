@@ -16,7 +16,7 @@ class Fun(commands.Cog):
 
     @guild_only()
     @cooldown(1, 20, BucketType.channel)
-    @commands.hybrid_command(name = "fight", aliases = ["duel"], pass_context = True)
+    @commands.hybrid_command(name="fight", aliases=["duel"], pass_context=True)
     async def fight(self, ctx, opponent: discord.Member):
         """Start a fight with another user."""
         responses = [
@@ -44,17 +44,17 @@ class Fun(commands.Cog):
             hps[opp_idx] = max(hps[opp_idx] - damage, 0)
             messages.append(
                 await ctx.send("**{opponent}** {response} **{attacker}**! *[-{dmg} hp] [{hp} HP remaining]*".format(
-                    opponent = players[opp_idx].name,
-                    attacker = players[turn].name,
-                    response = random.choice(responses),
-                    dmg = damage,
-                    hp = hps[opp_idx]
+                    opponent=players[opp_idx].name,
+                    attacker=players[turn].name,
+                    response=random.choice(responses),
+                    dmg=damage,
+                    hp=hps[opp_idx]
                 )))
             await sleep(1.5)
             turn = opp_idx
         await ctx.send(
-            "{loser} lost! GG {winner}!".format(loser = players[turn].mention,
-                                                winner = players[(turn + 1) % 2].mention))
+            "{loser} lost! GG {winner}!".format(loser=players[turn].mention,
+                                                winner=players[(turn + 1) % 2].mention))
         await sleep(5)
         # bulk delete if we have the manage messages permission
         if ctx.channel.permissions_for(ctx.me).manage_messages:

@@ -1,8 +1,10 @@
 """Used to annotate table types."""
 import typing
 
+
 class Column:
     """Allows for custom sql types/options."""
+
     def __init__(self, sql):
         self.sql = sql
 
