@@ -5,13 +5,14 @@ import os
 import sys
 import asyncio
 
-# import uvloop
-
 from bot import Dozer
+import uvloop
+from asyncdb.orm import orm
 
-# switch to uvloop for event loops (not supported on windows) uvloop.EventLoopPolicy() instead of
-# WindowsSelectorEventLoopPolicy()
-asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+if os.name == 'nt':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+else:
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 config = {
     'prefix': '&', 'developers': [],

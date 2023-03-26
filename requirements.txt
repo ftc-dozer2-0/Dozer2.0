@@ -8,3 +8,4 @@ aiotba~=0.0.3.post2
 pendulum~=2.1.2
 geopy~=2.3.0
 timezonefinder~=6.1.10
+uvloop~=0.17.0
