@@ -24,19 +24,6 @@ dozer_logger.addHandler(dozer_log_handler)
 discord_logger.addHandler(dozer_log_handler)
 dozer_log_handler.setFormatter(fmt=logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'))
 
-if discord.version_info.major < 1:
-    dozer_logger.error("Your installed discord.py version is too low "
-                       "%d.%d.%d, please upgrade to at least 1.0.0a",
-                       discord.version_info.major,
-                       discord.version_info.minor,
-                       discord.version_info.micro)
-    sys.exit(1)
-
-elif not hasattr(commands, "Cog"):
-    dozer_logger.error("Your installed discord.py rewrite version is too "
-                       "old and lacks discord.ext.commands.Cog, please reinstall it and try again.")
-    sys.exit(1)
-
 MY_GUILD = discord.Object(id=1088700196675919872)  # temp testing server, will switch to ftc discord id later
 intents = discord.Intents.default()
 intents.members = True

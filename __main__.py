@@ -5,17 +5,11 @@ import os
 import sys
 import asyncio
 import uvloop
+import discord
+from discord.ext import commands
 from typing import Any
 
 from bot import Dozer
-
-if sys.version_info < (3, 6):
-    sys.exit('Dozer requires Python 3.6 or higher to run. This is version %s.' % '.'.join(sys.version_info[:3]))
-
-if os.name == 'nt':
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-else:
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
 def load_config() -> dict[str, Any]:
@@ -89,5 +83,29 @@ async def main():
         if not bot.restarting:
             break
 
+
+if discord.version_info.major < 1:
+    v = discord.version_info
+    sys.exit(
+        f'Your installed discord.py version, {v.major}.{v.minor}.{v.macro}, is too low.'
+        'Please upgrade to at least 1.0.0a'
+    )
+
+if not hasattr(commands, "Cog"):
+    sys.exit(
+        'Your installed discord.py rewrite version is too old and lacks discord.ext.commands.Cog,'
+        'please reinstall it and try again.'
+    )
+
+if sys.version_info < (3, 6):
+    v = sys.version_info
+    sys.exit(
+        f'Dozer requires Python 3.6 or higher to run. This is version {v.major}.{v.minor}.{v.macro}.'
+    )
+
+if os.name == 'nt':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+else:
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 asyncio.run(main())
