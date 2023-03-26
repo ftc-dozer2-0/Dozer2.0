@@ -71,7 +71,7 @@ class Dozer(commands.Bot):
         super().__init__(command_prefix=config['prefix'], intents=intents, case_insensitive=True)
         self.config = config
         self.logger = dozer_logger
-        self._restarting = False
+        self.restarting = False
         self.check(self.global_checks)
         self.http_session = None
         if 'log_level' in config:
@@ -182,7 +182,7 @@ class Dozer(commands.Bot):
 
     async def shutdown(self, restart=False):
         """Shuts down the bot"""
-        self._restarting = restart
+        self.restarting = restart
         # await self.logout()
         await self.close()
         await orm.close()
