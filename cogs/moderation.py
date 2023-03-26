@@ -1100,4 +1100,4 @@ class GuildConfig(orm.Model):
 
 async def setup(bot):
     """Adds the moderation cog to the bot."""
-    await bot.add_cog(Moderation(bot))
+    #await bot.add_cog(Moderation(bot))
