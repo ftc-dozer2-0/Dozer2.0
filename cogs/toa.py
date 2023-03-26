@@ -148,7 +148,7 @@ It allows such a Dozer-like to ensure that it's returned data is both **accurate
 
         addn = """TOA will not (and likely never) return registration data for previous seasons,
 ~~at least intentionally~~. There is often historical and archival values to this, so FIRST data
-is used to suppliment the `season` argument of the `team` command, to allow users to look at past names
+is used to supplement the `season` argument of the `team` command, to allow users to look at past names
 and locations of teams who may have moved around or renamed over the years. """.replace("\n", " ")
         e.add_field(name="Additionally,", value=addn, inline=False)
         e.add_field(name="This is all intended to improve user experiences!",
@@ -235,22 +235,6 @@ and locations of teams who may have moved around or renamed over the years. """.
     events.example_usage = """
     `{prefix}toa events 4174 1617` - list 4174 Atomic Theory's events for the 2016-2017 season, Velocity Vortex
     """
-
-    @toa.command()
-    @bot_has_permissions(embed_links=True)
-    @app_commands.describe(team_num="The team number to look up", season="The season you want to see the team's info for")
-    async def awards(self, ctx, team_num: int, season=None):
-        """TODO: display awards command"""
-        season = to_season_key(self.convert_season(season)) or self.get_current_season()
-        fmt_season = self.fmt_season_code(season)
-        try:
-            events = await self.parser.team_events(team_num, season)
-        except aiotoa.AioTOAError:
-            await ctx.send("Couldn't get data!", ephemeral=True)
-            return
-        e = discord.Embed(color=embed_color,
-                          title=f"Awards for FTC team {team_num} in {fmt_season}:")
-        raise NotImplementedError("toa api is broken so this is a TODO")
 
 
 async def setup(bot):

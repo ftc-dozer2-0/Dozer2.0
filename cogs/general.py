@@ -196,7 +196,7 @@ class General(Cog):
         await ctx.author.edit(nick = nicktochangeto[:32])
         await ctx.send("Nick successfully changed to " + nicktochangeto[:32])
         if len(nicktochangeto) > 32:
-            await ctx.send("Warning: truncated nickname to 32 characters")
+            await ctx.send("Warning: truncated nickname to 32 characters", ephemeral = True)
 
     nick.example_usage = """
     `{prefix}nick cool nickname` - set your nickname to "cool nickname" 
