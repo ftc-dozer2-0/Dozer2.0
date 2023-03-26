@@ -10,9 +10,9 @@ from discord.ext import commands
 from discord import app_commands
 
 import utils
-from asyncdb.orm import orm
+# from asyncdb.orm import orm #this is for the database that dozer uses
 
-# why on earth should logging objects be capitalized?
+# why on earth should logging objects be capitalized? (I'm not gonna question whoever made this comment)
 dozer_logger = logging.getLogger('dozer')
 dozer_logger.level = logging.DEBUG
 discord_logger = logging.getLogger('discord')
@@ -23,7 +23,7 @@ dozer_log_handler.level = logging.INFO
 dozer_logger.addHandler(dozer_log_handler)
 discord_logger.addHandler(dozer_log_handler)
 dozer_log_handler.setFormatter(fmt = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'))
-global bot
+
 
 if discord.version_info.major < 1:
     dozer_logger.error("Your installed discord.py version is too low "
@@ -32,12 +32,16 @@ if discord.version_info.major < 1:
                        discord.version_info.minor,
                        discord.version_info.micro)
     sys.exit(1)
+
 elif not hasattr(commands, "Cog"):
     dozer_logger.error("Your installed discord.py rewrite version is too "
                        "old and lacks discord.ext.commands.Cog, please reinstall it and try again.")
     sys.exit(1)
 
 MY_GUILD = discord.Object(id = 948810047692095509)  # temp testing server, will switch to ftc discord id later
+intents = discord.Intents.All()
+intents.members = True
+intents.message_content = True
 
 
 class InvalidContext(commands.CheckFailure):
@@ -63,13 +67,8 @@ class DozerContext(commands.Context):
 
 class Dozer(commands.Bot):
     """Botty things that are critical to Dozer working"""
-    global bot
-    # _global_cooldown = commands.Cooldown(1, 1, commands.BucketType.user)  # One command per second per user
 
     def __init__(self, config):
-        global bot
-        intents = discord.Intents.all()
-
         super().__init__(command_prefix = config['prefix'], intents = intents, case_insensitive = True)
         self.config = config
         self.logger = dozer_logger
@@ -78,12 +77,12 @@ class Dozer(commands.Bot):
         self.http_session = None
         if 'log_level' in config:
             dozer_log_handler.setLevel(config['log_level'])
-        bot = Dozer(config)
 
     async def setup_hook(self):
         self.http_session = aiohttp.ClientSession(loop = self.loop)
         self.tree.copy_global_to(
-            guild = MY_GUILD)  # these 2 lines rely on MY_GUILD, which by default is set to be the FTC discord (faster command syncing when it's specified)
+            guild = MY_GUILD)  # these 2 lines rely on MY_GUILD, which by default is set to be the FTC discord (
+        # faster command syncing when it's specified)
         await self.tree.sync(guild = MY_GUILD)
 
     async def update_status(self):
