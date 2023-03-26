@@ -7,6 +7,7 @@ from discord.ext import commands
 import aiotoa.models
 from aiotoa import *
 from cogs._utils import *
+from discord import app_commands
 
 embed_color = discord.Color(0xf89808)
 
@@ -148,6 +149,7 @@ and locations of teams who may have moved around or renamed over the years. """.
 
     @toa.command()
     @bot_has_permissions(embed_links=True)
+    @app_commands.describe(team_num="The team number to look up", season="The season you want to see the team's info for")
     async def team(self, ctx, team_num: int, season: str = None):
         """Get information on an FTC team by number."""
         # Fun fact: this no longer actually queries TOA. It queries a server that provides FIRST data.
@@ -197,6 +199,7 @@ and locations of teams who may have moved around or renamed over the years. """.
 
     @toa.command()
     @bot_has_permissions(embed_links=True)
+    @app_commands.describe(team_num="The team number to look up", season="The season you want to see the team's info for")
     async def events(self, ctx, team_num: int, season=None):
         """Get events for an ftc team defaulting to current year"""
         season = to_season_key(self.convert_season(season)) or self.get_current_season()
@@ -227,6 +230,7 @@ and locations of teams who may have moved around or renamed over the years. """.
 
     @toa.command()
     @bot_has_permissions(embed_links=True)
+    @app_commands.describe(team_num="The team number to look up", season="The season you want to see the team's info for")
     async def awards(self, ctx, team_num: int, season=None):
         """TODO: display awards command"""
         season = to_season_key(self.convert_season(season)) or self.get_current_season()

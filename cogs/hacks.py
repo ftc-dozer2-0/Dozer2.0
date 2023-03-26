@@ -3,7 +3,7 @@ from discord.ext.commands import has_permissions, bot_has_permissions, BucketTyp
 from ._utils import *
 import discord
 from discord.ext import commands
-import random
+from discord import app_commands
 
 # as the name implies, this cog is hilariously hacky code.
 # it's very ftc server specific code, made specifically for its own needs.
@@ -65,7 +65,6 @@ class Hacks(Cog):
         if message.channel.id in VOTE_CHANNEL_IDS:
             await message.add_reaction('👍')
             await message.add_reaction('👎')
-            await message.add_reaction('💀')
 
     @Cog.listener()
     async def on_message_edit(self, before, after):
@@ -94,6 +93,8 @@ class Hacks(Cog):
     @has_permissions(manage_roles = True)
     @bot_has_permissions(manage_roles = True)
     @commands.hybrid_command()
+    @app_commands.describe(member = "The member to force undeafen")
+    @commands.guild_only()
     async def forceundeafen(self, ctx, member: discord.Member):
         async with ctx.typing():
             await ctx.bot.cogs["Moderation"].perm_override(member, read_messages = None)
@@ -102,6 +103,8 @@ class Hacks(Cog):
     @has_permissions(manage_roles = True)
     @bot_has_permissions(manage_roles = True)
     @commands.hybrid_command(name = "takeemotes", aliases = ["takeemote", "Lemotes", "bread", "🍞"])
+    @app_commands.describe(member = "The member to take emotes from")
+    @commands.guild_only()
     async def takeemotes(self, ctx, member: discord.Member):
         async with ctx.typing():
             await ctx.bot.cogs["Moderation"].perm_override(member, external_emojis = False)
@@ -110,6 +113,7 @@ class Hacks(Cog):
     @has_permissions(manage_roles = True)
     @bot_has_permissions(manage_roles = True)
     @commands.hybrid_command(name = "giveemotes", aliases = ["giveemote", "Gemotes"])
+    @app_commands.describe(member = "The member to give emote perms")
     async def giveemotes(self, ctx, member: discord.Member):
         async with ctx.typing():
             await ctx.bot.cogs["Moderation"].perm_override(member, external_emojis = None)
@@ -126,6 +130,7 @@ class Hacks(Cog):
     @cooldown(1, 60, BucketType.user)
     @bot_has_permissions(embed_links = True)
     @commands.hybrid_command(name = "sleep", aliases = ["💀", "bed", "🛏️", "goSleep", "goToBed", "goToSleep"])
+    @app_commands.describe(member = "The member to send the sleep message to")
     # ok at this point I'm just adding a ton of random aliases for fun
     async def sleep(self, ctx, member: discord.Member = None):
         IMG_URL = "https://i.imgur.com/ctzynlC.png"
