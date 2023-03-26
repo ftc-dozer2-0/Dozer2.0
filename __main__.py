@@ -52,7 +52,7 @@ if os.path.isfile(config_file):
         config.update(json.load(f))
 
 with open('config.json', 'w') as f:
-    json.dump(config, f, indent = '\t')
+    json.dump(config, f, indent='\t')
 
 if 'discord_token' not in config:
     sys.exit('Discord token must be supplied in configuration - please add one to config.json')

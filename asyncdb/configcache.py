@@ -1,6 +1,9 @@
 """Module that contains the class that will reduce calls to postgres as much as possible. Has no growth limit (yet)"""
+
+
 class AsyncConfigCache:
     """Class that will reduce calls to postgres as much as possible. Has no growth limit (yet)"""
+
     def __init__(self, table):
         self.cache = {}
         self.table = table

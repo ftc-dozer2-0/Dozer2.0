@@ -7,7 +7,8 @@ from collections.abc import Mapping
 import discord
 from discord.ext import commands
 
-__all__ = ['bot_has_permissions', 'command', 'group', 'Cog', 'Reactor', 'Paginator', 'paginate', 'chunk', 'dev_check', 'member_avatar_url']
+__all__ = ['bot_has_permissions', 'command', 'group', 'Cog', 'Reactor', 'Paginator', 'paginate', 'chunk', 'dev_check',
+           'member_avatar_url']
 
 
 class CommandMixin:
@@ -49,6 +50,7 @@ class Command(CommandMixin, commands.Command):
 
 class Group(CommandMixin, commands.Group):
     """Class for command groups"""
+
     def command(self, *args, **kwargs):
         """Initiates a command"""
         kwargs.setdefault('cls', Command)
@@ -74,6 +76,7 @@ def group(**kwargs):
 
 class Cog(commands.Cog):
     """Initiates cogs."""
+
     def __init__(self, bot):
         super().__init__()
         self.bot = bot
@@ -81,10 +84,12 @@ class Cog(commands.Cog):
 
 def dev_check():
     """Function decorator to check that the calling user is a developer"""
+
     async def predicate(ctx):
         if ctx.author.id not in ctx.bot.config['developers']:
             raise commands.NotOwner('you are not a developer!')
         return True
+
     return commands.check(predicate)
 
 
@@ -133,7 +138,8 @@ class Reactor:
             await self.message.add_reaction(emoji)
         while True:
             try:
-                reaction, reacting_member = await self.bot.wait_for('reaction_add', check=self._check_reaction, timeout=self.timeout)
+                reaction, reacting_member = await self.bot.wait_for('reaction_add', check=self._check_reaction,
+                                                                    timeout=self.timeout)
             except asyncio.TimeoutError:
                 break
 
@@ -218,9 +224,9 @@ class Paginator(Reactor):
                 if ind == 0:
                     self.go_to_page(0)
                 elif ind == 1:
-                    self.prev() # pylint: disable=not-callable
+                    self.prev()  # pylint: disable=not-callable
                 elif ind == 2:
-                    self.next() # pylint: disable=not-callable
+                    self.next()  # pylint: disable=not-callable
                 elif ind == 3:
                     self.go_to_page(-1)
                 else:  # Only valid option left is 4
@@ -272,6 +278,7 @@ def chunk(iterable, size):
 
 def bot_has_permissions(**required):
     """Decorator to check if bot has certain permissions when added to a command"""
+
     def predicate(ctx):
         """Function to tell the bot if it has the right permissions"""
         given = ctx.channel.permissions_for((ctx.guild or ctx.channel).me)
@@ -294,7 +301,9 @@ def bot_has_permissions(**required):
             func.__required_permissions__ = discord.Permissions()
             func.__required_permissions__.update(**required)
         return func
+
     return decorator
+
 
 def member_avatar_url(m: discord.Member, static_format='png', size=32):
     """return avatar url"""

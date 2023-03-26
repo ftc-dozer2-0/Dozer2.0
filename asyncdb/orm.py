@@ -18,18 +18,23 @@ import asyncpg
 
 from .psqlt import Column
 
+
 class class_or_instancemethod(classmethod):
     """cursed cursed cursed cursed cursed cursed cursed cursed cursed cursed cursed"""
+
     def __get__(self, instance, type_):
         descr_get = super().__get__ if instance is None else self.__func__.__get__
         return descr_get(instance, type_)
 
-#pylint: disable=not-an-iterable,too-many-statements,too-many-locals
+
+# pylint: disable=not-an-iterable,too-many-statements,too-many-locals
 class ORM:
     """Wrapper class for everything I guess..."""
     pool: asyncpg.pool.Pool
+
     def __init__(self):
         self.ready_event = asyncio.Event()
+
         class Model:
             """Tables subclass this."""
             __schemaname__ = "public"
@@ -40,12 +45,14 @@ class ORM:
             # kwargs are just a way to put in fields
             def __init__(self, conn=None, **kwargs):
                 self.conn = conn
-                self.__dict__.update({k:None for k in self._columns.keys()})
+                self.__dict__.update({k: None for k in self._columns.keys()})
                 self.__dict__.update(kwargs)
 
             def __repr__(self):
                 return self.__class__.__name__ + "(" + ", ".join(f"{key}={val!r}" for key, val in \
-                        {key: getattr(self, key) for key in self._columns.keys() if getattr(self, key) is not None}.items()) + ")"
+                                                                 {key: getattr(self, key) for key in
+                                                                  self._columns.keys() if
+                                                                  getattr(self, key) is not None}.items()) + ")"
 
             async def until_ready(self):
                 """Blocks the current task until the ORM is up and running."""
@@ -64,7 +71,8 @@ class ORM:
                         scls._orm = self
                         if scls.__primary_key__:
                             if not isinstance(scls.__primary_key__, tuple):
-                                raise TypeError(f"Primary key fields should be tuples, did you forget a comma in {scls.__name__}?")
+                                raise TypeError(
+                                    f"Primary key fields should be tuples, did you forget a comma in {scls.__name__}?")
 
                         async with conn.transaction():
                             db_columns = await conn.fetch("SELECT column_name from information_schema.columns "
@@ -155,9 +163,10 @@ class ORM:
                 if not properties:
                     raise ValueError("bruh which one do i pick")
                 fields = properties.keys()
-                qs = f"SELECT * FROM {cls.__schemaname__}.{cls.__tablename__} WHERE " + " AND ".join(f"{f}=${i}" for i, f in enumerate(fields, 1))
+                qs = f"SELECT * FROM {cls.__schemaname__}.{cls.__tablename__} WHERE " + " AND ".join(
+                    f"{f}=${i}" for i, f in enumerate(fields, 1))
                 return await cls.fetchrow(*([qs] + list(properties.values())), _conn=_conn)
-            
+
             async def update_or_add(self, *args, **kwargs):
                 """frcdozer orm compat"""
                 return await self.upsert(*args, **kwargs)
@@ -179,10 +188,12 @@ class ORM:
                         properties = {k: getattr(self, k) for k in self.__primary_key__}
                 qs = f"UPDATE {self.__schemaname__}.{self.__tablename__} SET ({','.join(fields)}) = (" + ",".join(
                     f"${i}" for i in range(1, len(fields) + 1)) + ") " \
-                         "WHERE " + " AND ".join(f"{f} = ${i}" for i, f in enumerate(properties.keys(), len(fields) + 1))
+                                                                  "WHERE " + " AND ".join(
+                    f"{f} = ${i}" for i, f in enumerate(properties.keys(), len(fields) + 1))
                 # print(qs)
 
-                return await self.fetchrow(*([qs] + [getattr(self, f) for f in fields] + list(properties.values())), _conn=_conn)
+                return await self.fetchrow(*([qs] + [getattr(self, f) for f in fields] + list(properties.values())),
+                                           _conn=_conn)
 
             @class_or_instancemethod
             async def delete(self_or_cls, _conn=None, **properties):
@@ -295,9 +306,9 @@ class ORM:
                 ret.append(tuple(ret_row))
         return ret
 
-
     async def connect(self, **kwargs):
         """Connects to the database and creates the internal asyncpg pool."""
+
         async def connection_initer(conn):
             await conn.set_type_codec(
                 'json',
@@ -310,9 +321,9 @@ class ORM:
         self.pool = await asyncpg.create_pool(**kwargs)
         self.acquire = self.pool.acquire
 
-
     async def close(self):
         """Shuts down the asyncpg pool."""
         await self.pool.close()
+
 
 orm = ORM()
