@@ -128,5 +128,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# IDEA Files
+.idea/
+
 # Bot config
 config.json
