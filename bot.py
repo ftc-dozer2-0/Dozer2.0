@@ -38,8 +38,8 @@ elif not hasattr(commands, "Cog"):
                        "old and lacks discord.ext.commands.Cog, please reinstall it and try again.")
     sys.exit(1)
 
-MY_GUILD = discord.Object(id=948810047692095509)  # temp testing server, will switch to ftc discord id later
-intents = discord.Intents.All()
+MY_GUILD = discord.Object(id = 1088700196675919872)  # temp testing server, will switch to ftc discord id later
+intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 
@@ -190,7 +190,7 @@ class Dozer(commands.Bot):
         await self.http_session.close()
         self.loop.stop()
 
-    @bot.tree.context_menu(name="Report message to mods")
+'''    @bot.tree.context_menu(name = "Report message to mods")
     async def report_message(interaction: discord.Interaction, message: discord.Message):
         # We're sending this response message with ephemeral=True, so only the command executor can see it
         await interaction.response.send_message(
@@ -214,4 +214,4 @@ class Dozer(commands.Bot):
         url_view.add_item(
             discord.ui.Button(label='Go to Message', style=discord.ButtonStyle.url, url=message.jump_url))
 
-        await log_channel.send(embed=embed, view=url_view)
+'''

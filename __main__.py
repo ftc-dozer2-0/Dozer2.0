@@ -66,11 +66,11 @@ bot = Dozer(config)
 
 
 async def main():
-    for ext in os.listdir('dozer/cogs'):
+    for ext in os.listdir('cogs'):
         if not ext.startswith(('_', '.')):
-            await bot.load_extension('dozer.cogs.' + ext[:-3])  # Remove '.py' from the end of the filename
-    await orm.connect(dsn=config['db_url'])
-    await orm.Model.create_all_tables()
+            await bot.load_extension('cogs.' + ext[:-3])  # Remove '.py' from the end of the filename
+    # await orm.connect(dsn = config['db_url'])
+    # await orm.Model.create_all_tables()
     await bot.run()
 
 
