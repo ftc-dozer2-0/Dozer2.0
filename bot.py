@@ -66,9 +66,9 @@ class Dozer(commands.Bot):
 
     async def setup_hook(self):
         self.http_session = aiohttp.ClientSession(loop=self.loop)
-        self.tree.copy_global_to(
-            guild=MY_GUILD)  # these 2 lines rely on MY_GUILD, which by default is set to be the FTC discord (
+        # these 2 lines rely on MY_GUILD, which by default is set to be the FTC discord (
         # faster command syncing when it's specified)
+        self.tree.copy_global_to(guild=MY_GUILD)
         await self.tree.sync(guild=MY_GUILD)
 
     async def update_status(self):
@@ -100,60 +100,45 @@ class Dozer(commands.Bot):
     async def get_context(self, message, *, cls=DozerContext):
         return await super().get_context(message, cls=cls)
 
-    async def on_command_error(self, context, exception):
+    async def on_command_error(self, ctx, exception):
         if isinstance(exception, commands.NoPrivateMessage):
-            await context.send('{}, This command cannot be used in DMs.'.format(context.author.mention))
-
+            await ctx.send(f'{ctx.author.mention}, This command cannot be used in DMs.')
         elif isinstance(exception, commands.UserInputError):
-            await context.send('{}, {}'.format(context.author.mention, self.format_error(context, exception)))
-
+            await ctx.send(f'{ctx.author.mention}, {utils.format_error(ctx, exception)}')
         elif isinstance(exception, commands.NotOwner):
-            await context.send('{}, {}'.format(context.author.mention, exception.args[0]))
-
+            await ctx.send(f'{ctx.author.mention}, {exception.args[0]}')
         elif isinstance(exception, commands.MissingPermissions):
             permission_names = [name.replace('guild', 'server').replace('_', ' ').title() for name in
                                 exception.missing_perms]
-            await context.send('{}, you need {} permissions to run this command!'.format(
-                context.author.mention, utils.pretty_concat(permission_names)))
-
+            perm_str = utils.pretty_concat(permission_names)
+            await ctx.send(f'{ctx.author.mention}, you need {perm_str} permissions to run this command!')
         elif isinstance(exception, commands.BotMissingPermissions):
             permission_names = [name.replace('guild', 'server').replace('_', ' ').title() for name in
                                 exception.missing_perms]
-            await context.send('{}, I need {} permissions to run this command!'.format(
-                context.author.mention, utils.pretty_concat(permission_names)))
-
+            perm_str = utils.pretty_concat(permission_names)
+            await ctx.send(f'{ctx.author.mention}, I need {perm_str} permissions to run this command!')
         elif isinstance(exception, commands.CommandOnCooldown):
-            await context.send('{}, That command is on cooldown! Try again in {:.2f}s!'.format(context.author.mention,
-                                                                                               exception.retry_after))
-
+            await ctx.send(
+                f'{ctx.author.mention}, That command is on cooldown!'
+                f'Try again in {exception.retry_after:.2f}s!'
+            )
         elif isinstance(exception, (commands.CommandNotFound, InvalidContext)):
             pass  # Silent ignore
-
         else:
-            await context.send(
+            await ctx.send(
                 '```\n%s\n```' % ''.join(traceback.format_exception_only(type(exception), exception)).strip())
-            if isinstance(context.channel, discord.TextChannel):
+            if isinstance(ctx.channel, discord.TextChannel):
                 dozer_logger.error('Error in command <{0}> ({1.name!r}:({1.id}) {2}:({2.id}) {3}:({3.id}) {4})'
-                                   ''.format(context.command, context.guild, context.channel, context.author,
-                                             context.message.content))
+                                   ''.format(ctx.command, ctx.guild, ctx.channel, ctx.author,
+                                             ctx.message.content))
             else:
                 dozer_logger.error(
-                    'Error in command <{0}> (DM {1}:({1}.id) {2})'.format(context.command, context.channel.recipient,
-                                                                          context.message.content))
+                    'Error in command <{0}> (DM {1}:({1}.id) {2})'.format(ctx.command, ctx.channel.recipient,
+                                                                          ctx.message.content))
             dozer_logger.error(''.join(traceback.format_exception(type(exception), exception, exception.__traceback__)))
 
     @staticmethod
-    def format_error(ctx, err, *, word_re=re.compile('[A-Z][a-z]+')):
-        """Turns an exception into a user-friendly (or -friendlier, at least) error message."""
-        type_words = word_re.findall(type(err).__name__)
-        type_msg = ' '.join(map(str.lower, type_words))
-
-        if err.args:
-            return '%s: %s' % (type_msg, utils.clean(ctx, err.args[0]))
-        else:
-            return type_msg
-
-    def global_checks(self, ctx):
+    def global_checks(ctx):
         """Checks that should be executed before passed to the command"""
         if ctx.author.bot:
             raise InvalidContext('Bots cannot run commands!')
