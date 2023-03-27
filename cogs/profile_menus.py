@@ -31,21 +31,21 @@ class ProfileMenus(commands.Cog):
         if member.premium_since is not None:
             embed.add_field(name = 'Member Boosted', value = discord.utils.format_dt(member.premium_since),
                             inline = True)
-        embed.add_field(name = 'Color', value = str(member.color).upper(), inline = True)
-
         status = 'DND' if member.status is discord.Status.dnd else member.status.name.title()
         if member.status is not discord.Status.offline:
             platforms = self.pluralize([platform for platform in ('web', 'desktop', 'mobile') if
                                         getattr(member, f'{platform}_status') is not discord.Status.offline])
             status = f'{status} on {platforms}'
         activities = ', '.join(self._format_activities(member.activities))
-        embed.add_field(name = 'Status and Activity', value = f'{status}, {activities}', inline = True)
-
+        if activities:
+            status = f'{status}, {activities}'
+        else:
+            status = f'{status}'
+        embed.add_field(name = 'Status and Activity', value = status, inline = True)
         embed.add_field(name = 'Roles', value = ', '.join(role.name for role in member.roles[:0:-1]) or 'None',
                         inline = False)
-        embed.add_field(name = 'Icon URL', value = icon_url, inline = False)
         embed.set_thumbnail(url = icon_url)
-        await interaction.response.send_message(embed = embed)
+        await interaction.response.send_message(embed = embed, ephemeral = True)
 
     @staticmethod
     def _format_activities(activities: typing.Sequence[discord.Activity]) -> typing.List[str]:

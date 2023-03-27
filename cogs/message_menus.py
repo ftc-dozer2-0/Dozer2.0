@@ -19,7 +19,7 @@ class MessageMenus(commands.Cog):
         # We're sending this response message with ephemeral=True, so only the command executor can see it
         await interaction.response.send_message(
             f'Thanks for reporting this message by {message.author.mention}! The mod team will be looking into this. ',
-            ephemeral = False
+            ephemeral = True
         )
 
         # Handle report by sending it into a log channel

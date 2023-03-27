@@ -57,11 +57,11 @@ class Development(commands.Cog):
     async def reload(self, ctx, cog):
         """Reloads a cog."""
         extension = 'cogs.' + cog
-        msg = await ctx.send('Reloading extension %s' % extension)
+        msg = await ctx.send(f'Reloading extension {extension}', ephemeral = True)
         await self.bot.reload_extension(extension)
         # needs to be run otherwise cog tables won't have necessary runtime attrs
         await orm.Model.create_all_tables()
-        await msg.edit(content='Reloaded extension %s' % extension)
+        await msg.edit(content=f'Reloaded extension {extension}')
 
     reload.example_usage = """
     `{prefix}reload development` - reloads the development cog

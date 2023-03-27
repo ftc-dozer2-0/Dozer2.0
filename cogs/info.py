@@ -28,7 +28,7 @@ except Exception:
 
 class Info(Cog):
     """Commands for getting information about people and things on Discord."""
-    datetime_format = '%Y-%m-%d %H:%M:%S UTC'
+    #datetime_format = '%Y-%m-%d %H:%M:%S UTC' very useless when you can just use discord dt formatting, in relative time
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -57,24 +57,24 @@ class Info(Cog):
 
         embed = discord.Embed(title=member.display_name, description=f'{member!s} ({member.id})', color=member.color)
         embed.add_field(name='Bot Created' if member.bot else 'Account Created',
-                        value=member.created_at.strftime(self.datetime_format), inline=True)
-        embed.add_field(name='Member Joined', value=member.joined_at.strftime(self.datetime_format), inline=True)
+                        value=discord.utils.format_dt(member.created_at), inline=True)
+        embed.add_field(name='Member Joined', value=discord.utils.format_dt(member.joined_at), inline=True)
         if member.premium_since is not None:
-            embed.add_field(name='Member Boosted', value=member.premium_since.strftime(self.datetime_format), inline=True)
-        embed.add_field(name='Color', value=str(member.color).upper(), inline=True)
-
+            embed.add_field(name='Member Boosted', value=discord.utils.format_dt(member.premium_since), inline=True)
         status = 'DND' if member.status is discord.Status.dnd else member.status.name.title()
         if member.status is not discord.Status.offline:
             platforms = self.pluralize([platform for platform in ('web', 'desktop', 'mobile') if
                                         getattr(member, f'{platform}_status') is not discord.Status.offline])
             status = f'{status} on {platforms}'
         activities = ', '.join(self._format_activities(member.activities))
-        embed.add_field(name='Status and Activity', value=f'{status}, {activities}', inline=True)
-
+        if activities is not None:
+            status = f'{status}, {activities}'
+        else:
+            status = f'{status}'
+        embed.add_field(name='Status and Activity', value=status, inline=True)
         embed.add_field(name='Roles', value=', '.join(role.name for role in member.roles[:0:-1]) or 'None', inline=False)
-        embed.add_field(name='Icon URL', value=icon_url, inline=False)
-        embed.set_thumbnail(url=icon_url)
-        await ctx.send(embed=embed)
+        embed.set_thumbnail(url=icon_url or None)
+        await ctx.send(embed=embed, ephemeral=True)
 
     member.example_usage = """
     `{prefix}member`: show your member info
@@ -136,9 +136,9 @@ class Info(Cog):
         e.description = f"{guild.member_count} members, {len(guild.channels)} channels, {len(guild.roles) - 1} roles"
         #e.add_field(name='Name', value=guild.name)
         e.add_field(name='ID', value=guild.id)
-        e.add_field(name='Created at', value=guild.created_at.strftime(datetime_format))
+        e.add_field(name='Created at', value=discord.utils.format_dt(guild.created_at))
         e.add_field(name='Owner', value=guild.owner.mention)
-        e.add_field(name='Emoji', value="{} static, {} animated".format(static_emoji, animated_emoji))
+        e.add_field(name='Emoji', value=f"{static_emoji} static, {animated_emoji} animated")
         e.add_field(name='Region', value=guild.region.name)
         e.add_field(name='Nitro Boost', value=f'Level {ctx.guild.premium_tier}, '
                                               f'{ctx.guild.premium_subscription_count} booster(s)\n'
@@ -181,7 +181,7 @@ class Info(Cog):
     async def afk(self, ctx, *, reason: str = "Not specified"):
         """Set yourself to AFK so that if you are pinged, the bot can explain your absence."""
         if len(ctx.message.mentions):
-            await ctx.send("Please don't mention anyone in your AFK message!")
+            await ctx.send("Please don't mention anyone in your AFK message!", ephemeral=True)
             return
 
         afk_status = self.afk_map.get(ctx.author.id)
@@ -209,7 +209,7 @@ class Info(Cog):
 
         afk_status = self.afk_map.get(ctx.author.id)
         if afk_status is not None:
-            await ctx.send(f"**{ctx.author.name}** is no longer AFK!")
+            await ctx.send(f"**{ctx.author.name}** is no longer AFK!", ephemeral=True)
             del self.afk_map[ctx.author.id]
 
 
