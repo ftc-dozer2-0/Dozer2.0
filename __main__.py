@@ -69,8 +69,8 @@ async def main():
     for ext in os.listdir('cogs'):
         if not ext.startswith(('_', '.')):
             await bot.load_extension('cogs.' + ext[:-3])  # Remove '.py' from the end of the filename
-    # await orm.connect(dsn = config['db_url'])
-    # await orm.Model.create_all_tables()
+    await orm.connect(dsn = config['db_url'])
+    await orm.Model.create_all_tables()
     await bot.run()
 
 
