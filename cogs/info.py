@@ -4,8 +4,6 @@ import re
 import datetime
 # import resource
 
-from difflib import SequenceMatcher
-import typing
 import discord
 from discord.ext.commands import cooldown, BucketType, guild_only
 from discord.ext import commands
@@ -16,7 +14,6 @@ from asyncdb.orm import orm
 from asyncdb import psqlt
 
 blurple = discord.Color.blurple()
-datetime_format = '%Y-%m-%d %I:%M %p'
 startup_time = time.time()
 
 try:
@@ -28,14 +25,12 @@ except Exception:
 
 class Info(Cog):
     """Commands for getting information about people and things on Discord."""
-    #datetime_format = '%Y-%m-%d %H:%M:%S UTC' very useless when you can just use discord dt formatting, in relative time
-
     def __init__(self, bot):
         super().__init__(bot)
         self.afk_map = {}
         self.bot = bot
 
-    @commands.hybrid_command(aliases=['user', 'memberinfo', 'userinfo', 'profile'])
+    @commands.hybrid_command(name = "profile", aliases=['user', 'memberinfo', 'userinfo', 'member'])
     @guild_only()
     @bot_has_permissions(embed_links=True)
     @app_commands.describe(member = "The member to get info about.")
@@ -55,24 +50,18 @@ class Info(Cog):
 
         icon_url = member_avatar_url(member)
 
-        embed = discord.Embed(title=member.display_name, description=f'{member!s} ({member.id})', color=member.color)
+        embed = discord.Embed(title=member.display_name, description=f'{member!s} ({member.id}) | {member.mention}', color=member.color)
         embed.add_field(name='Bot Created' if member.bot else 'Account Created',
                         value=discord.utils.format_dt(member.created_at), inline=True)
         embed.add_field(name='Member Joined', value=discord.utils.format_dt(member.joined_at), inline=True)
         if member.premium_since is not None:
             embed.add_field(name='Member Boosted', value=discord.utils.format_dt(member.premium_since), inline=True)
-        status = 'DND' if member.status is discord.Status.dnd else member.status.name.title()
-        if member.status is not discord.Status.offline:
-            platforms = self.pluralize([platform for platform in ('web', 'desktop', 'mobile') if
-                                        getattr(member, f'{platform}_status') is not discord.Status.offline])
-            status = f'{status} on {platforms}'
-        activities = ', '.join(self._format_activities(member.activities))
-        if activities is not None:
-            status = f'{status}, {activities}'
+        if len(member.roles) > 1:
+            role_string = ' '.join([r.mention for r in member.roles][1:])
         else:
-            status = f'{status}'
-        embed.add_field(name='Status and Activity', value=status, inline=True)
-        embed.add_field(name='Roles', value=', '.join(role.name for role in member.roles[:0:-1]) or 'None', inline=False)
+            role_string = member.roles[0].mention
+        s = "s" if len(member.roles) >= 2 else ""
+        embed.add_field(name = f"Role{s}: ", value = role_string, inline = False)
         embed.set_thumbnail(url=icon_url or None)
         await ctx.send(embed=embed, ephemeral=True)
 
@@ -81,72 +70,27 @@ class Info(Cog):
     `{prefix}member {ctx.me}`: show my member info
     """
 
-    @staticmethod
-    def _format_activities(activities: typing.Sequence[discord.Activity]) -> typing.List[str]:
-        if not activities:
-            return []
-
-        def format_activity(activity: discord.Activity) -> str:
-            if isinstance(activity, discord.CustomActivity):
-                return f"{activity.emoji} {activity.name}"
-            elif isinstance(activity, discord.Spotify):
-                return f'listening to {activity.title} by {activity.artist} on Spotify'
-            elif activity.type is discord.ActivityType.listening:
-                return f'listening to {activity.name}'  # Special-cased to insert " to"
-            else:
-                return f'{activity.type.name} {activity.name}'
-
-        # Some games show up twice in the list (e.g. "Rainbow Six Siege" and "Tom Clancy's Rainbow Six Siege") so we
-        # need to dedup them by string similarity before displaying them
-        matcher = SequenceMatcher(lambda c: not c.isalnum(), autojunk=False)
-        filtered = [activities[0]]
-        for activity in activities[1:]:
-            matcher.set_seq2(activity.name)  # Expensive metadata is computed about seq2, so change it less frequently
-            for filtered_activity in filtered:
-                matcher.set_seq1(filtered_activity.name)
-                if matcher.quick_ratio() < 0.6 and matcher.ratio() < 0.6:  # Use quick_ratio if we can as ratio is slow
-                    filtered.append(activity)
-                    break
-
-        return [format_activity(activity) for activity in filtered]
-
-    @staticmethod
-    def pluralize(values: typing.List[str]) -> str:
-        """Inserts commas and "and"s in the right places to create a grammatically correct list."""
-        if len(values) == 0:
-            return ''
-        elif len(values) == 1:
-            return values[0]
-        elif len(values) == 2:
-            return f'{values[0]} and {values[1]}'
-        else:
-            return f'{", ".join(values[:-1])}, and {values[-1]}'
-
     @guild_only()
     @cooldown(1, 10, BucketType.channel)
-    @commands.hybrid_command(aliases=['server', 'guildinfo', 'serverinfo'])
+    @commands.hybrid_command(name= "server", aliases=['guild', 'guildinfo', 'serverinfo'])
     async def guild(self, ctx):
         """Retrieve information about this guild."""
         guild = ctx.guild
         static_emoji = sum(not e.animated for e in ctx.guild.emojis)
         animated_emoji = sum(e.animated for e in ctx.guild.emojis)
         e = discord.Embed(color=blurple)
-        e.set_thumbnail(url=guild.icon.url)
+        e.set_thumbnail(url=guild.icon.url if guild.icon else None)
         e.title = guild.name
         e.description = f"{guild.member_count} members, {len(guild.channels)} channels, {len(guild.roles) - 1} roles"
-        #e.add_field(name='Name', value=guild.name)
         e.add_field(name='ID', value=guild.id)
         e.add_field(name='Created at', value=discord.utils.format_dt(guild.created_at))
         e.add_field(name='Owner', value=guild.owner.mention)
         e.add_field(name='Emoji', value=f"{static_emoji} static, {animated_emoji} animated")
-        e.add_field(name='Region', value=guild.region.name)
         e.add_field(name='Nitro Boost', value=f'Level {ctx.guild.premium_tier}, '
                                               f'{ctx.guild.premium_subscription_count} booster(s)\n'
                                               f'{ctx.guild.filesize_limit // 1024**2}MiB files, '
                                               f'{ctx.guild.bitrate_limit / 1000:0.1f}kbps voice')
-        e.add_field(name='Icon URL', value=guild.icon.url or 'This guild has no icon.', inline=False)
-
-        await ctx.send(embed=e)
+        await ctx.send(embed=e, ephemeral=True)
 
     guild.example_usage = """
     `{prefix}guild` - get information about this guild
@@ -170,7 +114,7 @@ class Info(Cog):
             #"Process memory usage:": f"{resource.getrusage(resource.RUSAGE_SELF).ru_maxrss}K",
             "Process uptime": str(datetime.timedelta(seconds=round(time.time() - startup_time)))
         }.items()))
-        await ctx.send(f"```\n{frame}\n```")#embed=e)
+        await ctx.send(f"```\n{frame}\n```", ephemeral = True)#embed=e)
 
     stats.example_usage = """
     `{prefix}stats` - get current bot/host stats

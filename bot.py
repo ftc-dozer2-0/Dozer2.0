@@ -39,9 +39,10 @@ elif not hasattr(commands, "Cog"):
     sys.exit(1)
 
 MY_GUILD = discord.Object(id = 1088700196675919872)  # temp testing server, will switch to ftc discord id later
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.members = True
 intents.message_content = True
+intents.presences = True
 
 
 class InvalidContext(commands.CheckFailure):
