@@ -1,11 +1,11 @@
 """A cog that handles keeping nicknames persistent between member join/leave, as a substitute for setting nicknames by teams."""
-import discord
-from discord.ext.commands import BadArgument, guild_only
 from discord import app_commands
 from discord.ext import commands
-from ._utils import *
-from asyncdb.orm import orm
+from discord.ext.commands import guild_only
+
 from asyncdb import psqlt
+from asyncdb.orm import orm
+from ._utils import *
 
 
 class Nicknames(commands.Cog):
@@ -14,7 +14,7 @@ class Nicknames(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @commands.command()
+    @commands.hybrid_command()
     @guild_only()
     @app_commands.describe(save = "Do you want to save your nickname?")
     async def savenick(self, ctx, save: bool = None):
@@ -27,7 +27,7 @@ class Nicknames(commands.Cog):
             if save is not None:
                 nick.enabled = save
                 await nick.update()
-        await ctx.send(f"Nickname saving is {'enabled' if nick.enabled else 'disabled'}!")
+        await ctx.send(f"Nickname saving is {'enabled' if nick.enabled else 'disabled'}!", ephemeral=True)
     savenick.example_usage = """
     `{prefix}savenick False` - disables saving nicknames upon server leave.
     """

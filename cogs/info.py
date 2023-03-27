@@ -98,7 +98,7 @@ class Info(Cog):
 
     @commands.hybrid_command()
     async def stats(self, ctx):
-        """Get current running internal/hosts stats for the bot"""
+        """Get current running internal/host stats for the bot"""
         info = await ctx.bot.application_info()
 
         #e = discord.Embed(title=info.name + " Stats", color=discord.Color.blue())
