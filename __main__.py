@@ -5,12 +5,12 @@ import os
 import sys
 import asyncio
 
-# import uvloop
+import uvloop
 from asyncdb.orm import orm
 
 # switch to uvloop for event loops (not supported on windows) uvloop.EventLoopPolicy() instead of
 # WindowsSelectorEventLoopPolicy()
-asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 config = {
     'prefix': '&', 'developers': [],
@@ -82,8 +82,8 @@ if bot._restarting:
     if script.startswith(os.getcwd()):
         script = script[len(os.getcwd()):].lstrip(os.sep)
 
-    if script.endswith('__main__.py'):
-        args = [sys.executable, '-m', script[:-len('__main__.py')].rstrip(os.sep).replace(os.sep, '.')]
+    if script.endswith('__main__'):
+        args = [sys.executable, '-m', script[:-len('__main__')].rstrip(os.sep).replace(os.sep, '.')]
     else:
         args = [sys.executable, script]
     os.execv(sys.executable, args + sys.argv[1:])
