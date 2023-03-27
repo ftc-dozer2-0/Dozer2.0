@@ -8,6 +8,7 @@ import discord
 import aiohttp
 from discord.ext import commands
 from discord import app_commands
+import os
 
 import utils
 
@@ -19,11 +20,11 @@ dozer_logger.level = logging.DEBUG
 discord_logger = logging.getLogger('discord')
 discord_logger.level = logging.DEBUG
 
-dozer_log_handler = logging.StreamHandler(stream=sys.stdout)
+dozer_log_handler = logging.StreamHandler(stream = sys.stdout)
 dozer_log_handler.level = logging.INFO
 dozer_logger.addHandler(dozer_log_handler)
 discord_logger.addHandler(dozer_log_handler)
-dozer_log_handler.setFormatter(fmt=logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'))
+dozer_log_handler.setFormatter(fmt = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'))
 
 if discord.version_info.major < 1:
     dozer_logger.error("Your installed discord.py version is too low "
@@ -55,9 +56,9 @@ class InvalidContext(commands.CheckFailure):
 class DozerContext(commands.Context):
     """Cleans all messages before sending"""
 
-    async def send(self, content=None, **kwargs):  # pylint: disable=arguments-differ
+    async def send(self, content = None, **kwargs):  # pylint: disable=arguments-differ
         if content is not None:
-            content = utils.clean(self, content, mass=True, member=False, role=False, channel=False)
+            content = utils.clean(self, content, mass = True, member = False, role = False, channel = False)
 
         if "embed" in kwargs and isinstance(kwargs["embed"], discord.Embed):
             for field in kwargs["embed"].fields:
@@ -70,7 +71,7 @@ class Dozer(commands.Bot):
     """Botty things that are critical to Dozer working"""
 
     def __init__(self, config):
-        super().__init__(command_prefix=config['prefix'], intents=intents, case_insensitive=True)
+        super().__init__(command_prefix = config['prefix'], intents = intents, case_insensitive = True)
         self.config = config
         self.logger = dozer_logger
         self._restarting = False
@@ -80,11 +81,11 @@ class Dozer(commands.Bot):
             dozer_log_handler.setLevel(config['log_level'])
 
     async def setup_hook(self):
-        self.http_session = aiohttp.ClientSession(loop=self.loop)
+        self.http_session = aiohttp.ClientSession(loop = self.loop)
         self.tree.copy_global_to(
-            guild=MY_GUILD)  # these 2 lines rely on MY_GUILD, which by default is set to be the FTC discord (
+            guild = MY_GUILD)  # these 2 lines rely on MY_GUILD, which by default is set to be the FTC discord (
         # faster command syncing when it's specified)
-        await self.tree.sync(guild=MY_GUILD)
+        await self.tree.sync(guild = MY_GUILD)
 
     async def update_status(self):
         """Dynamically update the bot's status."""
@@ -93,9 +94,9 @@ class Dozer(commands.Bot):
             status = discord.Status.dnd
         else:
             status = discord.Status.online
-        game = discord.Game(name=f"{self.config['prefix']}help | {len(self.guilds)} guilds")
+        game = discord.Game(name = f"{self.config['prefix']}help | {len(self.guilds)} guilds")
         try:
-            await self.change_presence(activity=game, status=status)
+            await self.change_presence(activity = game, status = status)
         except TypeError:
             dozer_logger.warning("You are running an older version of the discord.py rewrite (with breaking changes)! "
                                  "To upgrade, run `pip install -r requirements.txt --upgrade`")
@@ -112,8 +113,8 @@ class Dozer(commands.Bot):
         """Update bot status to remain accurate."""
         await self.update_status()
 
-    async def get_context(self, message, *, cls=DozerContext):
-        return await super().get_context(message, cls=cls)
+    async def get_context(self, message, *, cls = DozerContext):
+        return await super().get_context(message, cls = cls)
 
     async def on_command_error(self, context, exception):
         if isinstance(exception, commands.NoPrivateMessage):
@@ -158,7 +159,7 @@ class Dozer(commands.Bot):
             dozer_logger.error(''.join(traceback.format_exception(type(exception), exception, exception.__traceback__)))
 
     @staticmethod
-    def format_error(ctx, err, *, word_re=re.compile('[A-Z][a-z]+')):
+    def format_error(ctx, err, *, word_re = re.compile('[A-Z][a-z]+')):
         """Turns an exception into a user-friendly (or -friendlier, at least) error message."""
         type_words = word_re.findall(type(err).__name__)
         type_msg = ' '.join(map(str.lower, type_words))
@@ -182,12 +183,11 @@ class Dozer(commands.Bot):
         del self.config['discord_token']  # Prevent token dumping
         await super().start(token)
 
-    async def shutdown(self, restart=False):
+    async def shutdown(self, restart = False):
         """Shuts down the bot"""
         self._restarting = restart
         # await self.logout()
         await self.close()
-        #await orm.close()
+        # await orm.close()
         await self.http_session.close()
         self.loop.stop()
-

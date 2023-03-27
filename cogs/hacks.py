@@ -117,7 +117,7 @@ class Hacks(Cog):
     async def giveemotes(self, ctx, member: discord.Member):
         async with ctx.typing():
             await ctx.bot.cogs["Moderation"].perm_override(member, external_emojis = None)
-        await ctx.send("reset external emote perms for {member}", ephemeral = True)
+        await ctx.send(f"reset external emote perms for {member}", ephemeral = True)
 
     @has_permissions(add_reactions = True)
     @bot_has_permissions(add_reactions = True)
