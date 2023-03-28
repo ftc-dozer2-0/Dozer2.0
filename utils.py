@@ -2,6 +2,8 @@
 
 import re
 import discord
+from urllib.parse import urlencode
+
 
 __all__ = ['clean', 'is_clean']
 
@@ -11,7 +13,7 @@ role_mention = re.compile(r'<@&(\d+)>')
 channel_mention = re.compile(r'<#(\d+)>')
 
 
-def clean(ctx, text=None, *, mass=True, member=True, role=True, channel=True):
+def clean(ctx, text = None, *, mass = True, member = True, role = True, channel = True):
     """Cleans the message of anything specified in the parameters passed."""
     if text is None:
         text = ctx.message.content
@@ -26,7 +28,7 @@ def clean(ctx, text=None, *, mass=True, member=True, role=True, channel=True):
     return cleaned_text
 
 
-def is_clean(ctx, text=None):
+def is_clean(ctx, text = None):
     """Checks if the message is clean already and doesn't need to be cleaned."""
     if text is None:
         text = ctx.message.content
@@ -48,7 +50,7 @@ def clean_member_name(ctx, member_id):
 
 def clean_role_name(ctx, role_id):
     """Cleans role pings from messages."""
-    role = discord.utils.get(ctx.guild.roles, id=role_id)  # Guild.get_role doesn't exist
+    role = discord.utils.get(ctx.guild.roles, id = role_id)  # Guild.get_role doesn't exist
     if role is None:
         return '<@&\N{ZERO WIDTH SPACE}%d>' % role_id
     elif is_clean(ctx, role.name):
@@ -68,7 +70,7 @@ def clean_channel_name(ctx, channel_id):
         return '<#\N{ZERO WIDTH SPACE}%d>' % channel.id
 
 
-def pretty_concat(strings, single_suffix='', multi_suffix=''):
+def pretty_concat(strings, single_suffix = '', multi_suffix = ''):
     """Concatenates things in a pretty way"""
     if len(strings) == 1:
         return strings[0] + single_suffix
@@ -76,3 +78,32 @@ def pretty_concat(strings, single_suffix='', multi_suffix=''):
         return '{} and {}{}'.format(*strings, multi_suffix)
     else:
         return '{}, and {}{}'.format(', '.join(strings[:-1]), strings[-1], multi_suffix)
+
+
+def oauth_url(client_id, permissions = None, guild = None, redirect_uri = None):
+    """A helper function that returns the OAuth2 URL for inviting the bot
+    into guilds.
+    Parameters
+    -----------
+    client_id: :class:`str`
+        The client ID for your bot.
+    permissions: :class:`~discord.Permissions`
+        The permissions you're requesting. If not given then you won't be requesting any
+        permissions.
+    guild: :class:`~discord.Guild`
+        The guild to pre-select in the authorization screen, if available.
+    redirect_uri: :class:`str`
+        An optional valid redirect URI.
+    Returns
+    --------
+    :class:`str`
+        The OAuth2 URL for inviting the bot into guilds.
+    """
+    url = f'https://discord.com/oauth2/authorize?client_id={client_id}&scope=bot%20applications.commands'
+    if permissions is not None:
+        url = url + '&permissions=' + str(permissions.value)
+    if guild is not None:
+        url = url + "&guild_id=" + str(guild.id)
+    if redirect_uri is not None:
+        url = url + "&response_type=code&" + urlencode({'redirect_uri': redirect_uri})
+    return url

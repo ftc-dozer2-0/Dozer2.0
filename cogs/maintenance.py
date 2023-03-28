@@ -4,7 +4,6 @@ import os
 import sys
 
 from discord.ext.commands import NotOwner
-from bot import dozer_logger
 from cogs._utils import *
 from discord.ext import commands
 

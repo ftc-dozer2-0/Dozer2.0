@@ -3,32 +3,24 @@
 import json
 import os
 import sys
-import asyncio
 
-#import uvloop
-from asyncdb.orm import orm
+import discord
+import sentry_sdk
+from loguru import logger
 
-# switch to uvloop for event loops (not supported on windows) uvloop.EventLoopPolicy() instead of
-# WindowsSelectorEventLoopPolicy()
-asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+if sys.version_info < (3, 8):
+    sys.exit('Dozer requires Python 3.8 or higher to run. This is version ' + '.'.join(sys.version_info[:3]) + '.')
 
 config = {
     'prefix': '&', 'developers': [],
+    'cache_size': 20000,
     'tba': {
-        'key': ''
+        'key': 'Put TBA API key here'
     },
     'toa': {
-        'key': 'Put TOA API key here',
         'app_name': 'Dozer',
-        'teamdata_url': ''
     },
-    'ftc_events': {
-        "user": "Put FTC-Events user here",
-        "token": "Put FTC-Events token here",
-    },
-    'log_level': 'INFO',
-    'db_url': 'postgres:///dozer',
-    'tz_url': '',
+    'db_url': 'postgres://dozer_user:simplepass@postgres',
     'discord_token': "Put Discord API Token here.",
     'news': {
         'check_interval': 5.0,
@@ -42,8 +34,20 @@ config = {
         },
 
     },
+    'lavalink': {
+        'enabled': False,
+        'host': 'lavalink',
+        'port': 2333,
+        'password': 'youshallnotpass',
+        'identifier': 'MAIN',
+        'region': 'us_central'
+    },
     'debug': False,
-    'is_backup': False
+    'presences_intents': True,
+    'is_backup': False,
+    'invite_override': "",
+    "sentry_url": "",
+    "disabled_cogs": []
 }
 config_file = 'config.json'
 
@@ -52,29 +56,32 @@ if os.path.isfile(config_file):
         config.update(json.load(f))
 
 with open('config.json', 'w') as f:
-    json.dump(config, f, indent='\t')
+    json.dump(config, f, indent = '\t')
 
+if config['sentry_url'] != "":
+    sentry_sdk.init(  # pylint: disable=abstract-class-instantiated  # noqa: E0110
+        str(config['sentry_url']),
+        traces_sample_rate=1.0,
+    )
+logger_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{" \
+                "name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{" \
+                "message}</level> "
+logger.remove()
+logger.add(sys.stdout, format=logger_format, level="DEBUG" if config['debug'] else "INFO", enqueue=True, colorize=True)
 if 'discord_token' not in config:
-    sys.exit('Discord token must be supplied in configuration - please add one to config.json')
-
-if sys.version_info < (3, 6):
-    sys.exit('Dozer requires Python 3.6 or higher to run. This is version %s.' % '.'.join(sys.version_info[:3]))
+    sys.exit('Discord token must be supplied in configuration')
 
 from bot import Dozer
 
 bot = Dozer(config)
 
+intents = discord.Intents.default()
+intents.members = True
+intents.presences = True
+intents.message_content = True
 
-async def main():
-    for ext in os.listdir('cogs'):
-        if not ext.startswith(('_', '.')):
-            await bot.load_extension('cogs.' + ext[:-3])  # Remove '.py' from the end of the filename
-    await orm.connect(dsn = config['db_url'])
-    await orm.Model.create_all_tables()
-    await bot.run()
+bot.run()
 
-
-asyncio.run(main())
 
 # restart the bot if the bot flagged itself to do so
 if bot._restarting:

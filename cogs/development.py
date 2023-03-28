@@ -165,7 +165,7 @@ class Development(commands.Cog):
         """Lists the servers that the bot is in. Only accessible to developers."""
         embed = discord.Embed(title = "List of servers:", color = discord.Color.blue())
         embed.add_field(name = "Servers:", value = "\n".join([f"{guild.name} ({guild.id})" for guild in self.bot.guilds]))
-        await ctx.reply.send(embed = embed)
+        await ctx.send(embed = embed, ephemeral = True)
 
     listservers.example_usage = """
     `{prefix}listservers` - display the servers the bot is in. 

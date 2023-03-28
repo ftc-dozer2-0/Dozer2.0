@@ -64,7 +64,7 @@ class QA(Cog):
 
             # add url
             a += "\nhttps://ftc-qa.firstinspires.org/qa/" + question
-            await ctx.send(a)
+            await ctx.send(a, ephemeral = True)
 
     qa.example_usage = """
     `{prefix}qa 19` - show information on FTC Q&A #19

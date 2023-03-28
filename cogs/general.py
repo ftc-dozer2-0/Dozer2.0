@@ -6,6 +6,8 @@ from discord.ext.commands import BadArgument, cooldown, BucketType, Group, has_p
 from discord.ext import commands
 from ._utils import *
 from discord import app_commands
+blurple = discord.Color.blurple()
+from discord.utils import escape_markdown
 
 
 class General(Cog):
@@ -255,6 +257,22 @@ class General(Cog):
     `{prefix}invtes 5` - Generates 5 single use invites.
     `{prefix}invites 2 12` Generates 2 single use invites that last for 12 hours.
     """
+
+    @commands.hybrid_command(aliases = ["setprefix"])
+    @commands.guild_only()
+    @has_permissions(manage_guild = True)
+    async def configprefix(self, ctx, prefix: str):
+        """Update a servers dynamic prefix"""
+        new_prefix = DynamicPrefixEntry(
+            guild_id = int(ctx.guild.id),
+            prefix = prefix
+        )
+        await new_prefix.update_or_add()
+        await self.bot.dynamic_prefix.refresh()
+        e = discord.Embed(color = blurple)
+        e.add_field(name = 'Success!', value = f"`{ctx.guild}`'s prefix has set to `{prefix}`!")
+        e.set_footer(text = 'Triggered by ' + escape_markdown(ctx.author.display_name))
+        await ctx.send(embed = e)
 
 
 async def setup(bot):

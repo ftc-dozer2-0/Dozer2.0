@@ -33,8 +33,7 @@ class Voice(Cog):
     @bot_has_permissions(manage_roles = True)
     @has_permissions(manage_roles = True)
     async def voicebind(self, ctx, voice_channel: discord.VoiceChannel, *, role: discord.Role):
-        """Associates a voice channel with a role, so users joining a voice channel will automatically be given a
-        specified role or roles."""
+        """Associates a voice channel with a role, so that users in vc can have an additional channel"""
 
         config = await Voicebinds.select_one(channel_id = voice_channel.id)
         if config is not None:
