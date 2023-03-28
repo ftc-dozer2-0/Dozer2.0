@@ -59,7 +59,7 @@ class Dozer(commands.Bot):
         self.config = config
         self.logger = dozer_logger
         self.restarting = False
-        self.check(self.global_checks)
+        self.add_check(self.global_checks)
         self.http_session = None
         if 'log_level' in config:
             dozer_log_handler.setLevel(config['log_level'])

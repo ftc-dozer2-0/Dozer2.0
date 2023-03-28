@@ -62,7 +62,7 @@ def load_config() -> dict[str, Any]:
     return config
 
 
-def load_cogs(bot: Dozer):
+async def load_cogs(bot: Dozer):
     for ext in os.listdir('cogs'):
         if not ext.startswith(('_', '.')):
             await bot.load_extension('cogs.' + ext[:-3])  # Remove '.py' from the end of the filename
@@ -74,7 +74,7 @@ async def main():
     while True:
         config = load_config()
         bot = Dozer(config)
-        load_cogs(bot)
+        await load_cogs(bot)
 
         # await orm.connect(dsn = config['db_url'])
         # await orm.Model.create_all_tables()
