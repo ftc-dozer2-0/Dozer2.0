@@ -62,7 +62,7 @@ class Moderation(Cog):
             modlog_embed.add_field(name = "Duration", value = duration)
             modlog_embed.add_field(name = "Expiration",
                                    value = f"<t:{round((datetime.datetime.now().timestamp() + duration))}:R>")
-        modlog_embed.timestamp = datetime.datetime.utcnow()
+        modlog_embed.timestamp = discord.utils.format_dt(datetime.datetime.now(), style = "R")
         try:
             await target.send(embed = modlog_embed)
         except discord.Forbidden:
@@ -110,7 +110,7 @@ class Moderation(Cog):
         minutes = int(matches.get('minutes') or 0)
         seconds = int(matches.get('seconds') or 0)
         val = int((years * 3.154e+7) + (months * 2.628e+6) + (weeks * 604800) + (days * 86400) + (hours * 3600) + (
-                    minutes * 60) + seconds)
+                minutes * 60) + seconds)
         # Make sure it is a positive number, and it doesn't exceed the max 32-bit int
         return max(0, min(2147483647, val))
 
@@ -183,7 +183,7 @@ class Moderation(Cog):
         """Checks for messages sent in #robot-showcase without attachments or embeds and automatically deletes them."""
         if (
                 msg.channel.id == 771188718198456321 or msg.channel.id == 676583549561995274) and not msg.attachments and not msg.embeds and not re.search(
-                "https?://", msg.content):
+            "https?://", msg.content):
             await msg.delete()
 
     """=== context-free backend functions ==="""
@@ -268,7 +268,7 @@ class Moderation(Cog):
     @Cog.listener()
     async def on_ready(self):
         """Restore punishment timers on bot startup"""
-        pass # todo integrate with db
+        pass  # todo integrate with db
         '''        async with orm.acquire() as conn:
             q = await PunishmentTimerRecord.select(_conn = conn)
             for r in q:
@@ -289,6 +289,7 @@ class Moderation(Cog):
                                                                 global_modlog = r.send_modlog))
                 getLogger('dozer').info(
                     f"Restarted {PunishmentTimerRecord.type_map[punishment_type].__name__} of {target} in {guild}")'''
+
     @Cog.listener()
     async def on_member_join(self, member):
         """Logs that a member joined."""
@@ -464,7 +465,8 @@ class Moderation(Cog):
     @command(aliases = ["clearreacts"])
     @has_permissions(manage_messages = True)
     @bot_has_permissions(manage_messages = True)
-    @app_commands.describe(message_id = "The message to clear reactions from", channel = "(optional) The channel the message is in")
+    @app_commands.describe(message_id = "The message to clear reactions from",
+                           channel = "(optional) The channel the message is in")
     async def clearreactions(self, ctx, message_id: int, channel: discord.TextChannel = None):
         """Clear the reactions from a message, given its id and optionally a channel."""
         chn = channel or ctx.channel
@@ -483,7 +485,8 @@ class Moderation(Cog):
     @commands.hybrid_command(aliases = ["bulkclearreacts"])
     @has_permissions(manage_messages = True)
     @bot_has_permissions(manage_messages = True)
-    @app_commands.describe(num_to_clear = "The number of messages to clear reactions from", channel = "(optional) The channel to clear reactions from")
+    @app_commands.describe(num_to_clear = "The number of messages to clear reactions from",
+                           channel = "(optional) The channel to clear reactions from")
     async def bulkclearreactions(self, ctx, num_to_clear: int, channel: discord.TextChannel = None):
         """Clears the reactions of the last x messages in a channel"""
         chn = channel or ctx.channel
@@ -495,13 +498,14 @@ class Moderation(Cog):
     `{prefix}bulkclearreactions 50 #general` - clear all reactions from the last 50 messages in #general
     """
 
-    #this is all already underneath the class, moderation
+    # this is all already underneath the class, moderation
 
-    @commands.hybrid_group(name = "channel", invoke_without_command=True, case_insensitive=True)
+    @commands.hybrid_group(name = "channel", invoke_without_command = True, case_insensitive = True)
     async def channel_group(self, ctx):
         """Manages channel settings."""
         await ctx.send_help(ctx.command)
-    @channel_group.command(name="slowmode")
+
+    @channel_group.command(name = "slowmode")
     @has_permissions(manage_roles = True)
     @bot_has_permissions(manage_channels = True)
     async def slowmode(self, ctx, slowmode_delay: int):
@@ -512,18 +516,19 @@ class Moderation(Cog):
     slowmode.example_usage = """
     `{prefix}slowmode 20` - set slowmode to 20 seconds per message per user
     """
-    @channel_group.command(name="timeout")
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @app_commands.describe(duration="The duration of the timeout in seconds")
+
+    @channel_group.command(name = "timeout")
+    @has_permissions(manage_roles = True)
+    @bot_has_permissions(manage_roles = True)
+    @app_commands.describe(duration = "The duration of the timeout in seconds")
     async def timeout(self, ctx, duration: float):
         """Set a timeout (no sending messages or adding reactions) on the current channel."""
 
-        config = await self.guild_config.query_one(guild_id=ctx.guild.id)
+        config = await self.guild_config.query_one(guild_id = ctx.guild.id)
         if not config:
             config = GuildConfig.make_defaults(ctx.guild)
-            await config.insert(_upsert="ON CONFLICT DO NOTHING")
-            self.guild_config.invalidate_entry(guild_id=ctx.guild.id)
+            await config.insert(_upsert = "ON CONFLICT DO NOTHING")
+            self.guild_config.invalidate_entry(guild_id = ctx.guild.id)
 
         # None-safe - nonexistent or non-configured role return None
         member_role = ctx.guild.get_role(config.member_role_id)
@@ -539,31 +544,31 @@ class Moderation(Cog):
         to_restore = [(target, ctx.channel.overwrites_for(target)) for target in targets]
         for target, overwrite in to_restore:
             new_overwrite = discord.PermissionOverwrite.from_pair(*overwrite.pair())
-            new_overwrite.update(send_messages=False, add_reactions=False)
-            await ctx.channel.set_permissions(target, overwrite=new_overwrite)
+            new_overwrite.update(send_messages = False, add_reactions = False)
+            await ctx.channel.set_permissions(target, overwrite = new_overwrite)
 
         for allow_target in (ctx.me, ctx.author):
             overwrite = ctx.channel.overwrites_for(allow_target)
             new_overwrite = discord.PermissionOverwrite.from_pair(*overwrite.pair())
-            new_overwrite.update(send_messages=True)
-            await ctx.channel.set_permissions(allow_target, overwrite=new_overwrite)
+            new_overwrite.update(send_messages = True)
+            await ctx.channel.set_permissions(allow_target, overwrite = new_overwrite)
             to_restore.append((allow_target, overwrite))
 
-        e = discord.Embed(title='Timeout - {}s'.format(duration), description='This channel has been timed out.',
-                          color=discord.Color.blue())
-        e.set_author(name=ctx.author.display_name, icon_url=member_avatar_url(ctx.author))
-        msg = await ctx.send(embed=e)
+        e = discord.Embed(title = 'Timeout - {}s'.format(duration), description = 'This channel has been timed out.',
+                          color = discord.Color.blue())
+        e.set_author(name = ctx.author.display_name, icon_url = member_avatar_url(ctx.author))
+        msg = await ctx.send(embed = e)
 
         await asyncio.sleep(duration)
 
         for target, overwrite in to_restore:
             if all(permission is None for _, permission in overwrite):
-                await ctx.channel.set_permissions(target, overwrite=None)
+                await ctx.channel.set_permissions(target, overwrite = None)
             else:
-                await ctx.channel.set_permissions(target, overwrite=overwrite)
+                await ctx.channel.set_permissions(target, overwrite = overwrite)
 
         e.description = 'The timeout has ended.'
-        await msg.edit(embed=e)
+        await msg.edit(embed = e)
 
     timeout.example_usage = """
       `{prefix}timeout 60` - prevents sending messages in this channel for 1 minute (60s)
@@ -597,7 +602,6 @@ class Moderation(Cog):
         await ctx.guild.unban(user_mention, reason = reason)
         await self.mod_log(actor = ctx.author, action = "unbanned", target = user_mention, reason = reason,
                            orig_channel = ctx.channel, embed_color = discord.Color.green())
-
 
     unban.example_usage = """
     `{prefix}unban user_id reason` - unban the user corresponding to the ID for a given (optional) reason
