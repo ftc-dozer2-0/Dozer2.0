@@ -1,3 +1,6 @@
+
+
+
 """A cog that handles keeping nicknames persistent between member join/leave, as a substitute for setting nicknames by teams."""
 from discord import app_commands
 from discord.ext import commands
@@ -18,7 +21,7 @@ class Nicknames(commands.Cog):
     @guild_only()
     @app_commands.describe(save = "Do you want to save your nickname?")
     async def savenick(self, ctx, save: bool = None):
-        """Sets whether or not a user wants their nickname upon server leave to be saved upon server rejoin."""
+        """Sets whether a user wants their nickname upon server leave to be saved upon server rejoin or not."""
         nick = await NicknameTable.select_one(user_id=ctx.author.id, guild_id=ctx.guild.id)
         if nick is None:
             nick = NicknameTable(user_id=ctx.author.id, guild_id=ctx.guild.id, nickname=ctx.author.nick, enabled=save is None or save)
