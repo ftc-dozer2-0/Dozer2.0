@@ -21,7 +21,7 @@ discord_logger = logging.getLogger('discord')
 discord_logger.level = logging.DEBUG
 
 dozer_log_handler = logging.StreamHandler(stream = sys.stdout)
-dozer_log_handler.level = logging.INFO
+dozer_log_handler.level = logging.DEBUG
 dozer_logger.addHandler(dozer_log_handler)
 discord_logger.addHandler(dozer_log_handler)
 dozer_log_handler.setFormatter(fmt = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'))

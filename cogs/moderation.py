@@ -54,7 +54,6 @@ class Moderation(Cog):
         modlog_embed.add_field(name = f"{action.capitalize()} user",
                                value = f"{target.mention} ({target} | {target.id})", inline = False)
         modlog_embed.add_field(name = "Requested by", value = f"{actor.mention} ({actor} | {actor.id})", inline = False)
-        # the following few lines I borrowed from the frc dozer (skhynix#1554)
         modlog_embed.add_field(name = "Reason", value = self.hm_regex.sub("", reason) or "No reason provided",
                                inline = False)
         duration = self.hm_to_seconds(reason)
@@ -62,7 +61,8 @@ class Moderation(Cog):
             modlog_embed.add_field(name = "Duration", value = duration)
             modlog_embed.add_field(name = "Expiration",
                                    value = f"<t:{round((datetime.datetime.now().timestamp() + duration))}:R>")
-        #modlog_embed.timestamp = discord.utils.format_dt(datetime.datetime.now(), style = "R")
+        modlog_embed.add_field(name = "Time", value = discord.utils.format_dt(datetime.datetime.now()))
+        modlog_embed.timestamp = datetime.datetime.now()
         try:
             await target.send(embed = modlog_embed)
         except discord.Forbidden:
@@ -1045,7 +1045,6 @@ class PunishmentTimerRecord(orm.Model):
             f"${i}" for i in range(1, len(fields) + 1)) + ") RETURNING id"
         args = [qs] + [getattr(self, f) for f in fields]
         return (await self._fetch(args, _one = True, conn = _conn))["id"]
-
     type_map = {p.type: p for p in (Mute, Deafen)}
 
 

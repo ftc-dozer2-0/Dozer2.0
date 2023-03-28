@@ -318,7 +318,7 @@ class ORM:
             )
 
         kwargs["init"] = connection_initer
-        self.pool = await asyncpg.create_pool(**kwargs)
+        self.pool = await asyncpg.create_pool(statement_cache_size = 0, **kwargs)
         self.acquire = self.pool.acquire
 
     async def close(self):

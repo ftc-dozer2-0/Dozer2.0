@@ -39,13 +39,13 @@ class Shortcuts(commands.Cog):
         if settings is None:
             raise BadArgument("This server has no shortcut configuration.")
         if not settings.approved:
-            await ctx.send("This server is not approved for shortcuts.")
+            await ctx.send("This server is not approved for shortcuts.", ephemeral = True)
             return
         e = discord.Embed()
         e.title = "Server shortcut configuration"
         # e.add_field("Shortcut spreadsheet", settings.spreadsheet or "Unset")
         e.add_field(name = "Shortcut prefix", value = settings.prefix or "[unset]")
-        await ctx.send(embed = e)
+        await ctx.send(embed = e, ephemeral = True)
 
     @shortcuts.command()
     async def approve(self, ctx):
@@ -64,10 +64,11 @@ class Shortcuts(commands.Cog):
             settings.approved = True
             await settings.update()
         self.settings_cache.invalidate_entry(guild_id = ctx.guild.id)
-        await ctx.send("shortcuts approved for thils guild")
+        await ctx.send("shortcuts approved for this guild", ephemeral = True)
 
     @shortcuts.command()
     async def revoke(self, ctx):
+        """Revoke the server's ability to use shortcuts"""
         if ctx.author.id not in ctx.bot.config['developers']:
             raise NotOwner('you are not a developer!')
         settings: ShortcutSetting = await self.settings_cache.query_one(guild_id = ctx.guild.id)
@@ -75,12 +76,13 @@ class Shortcuts(commands.Cog):
             settings.approved = False
             await settings.update()
             self.settings_cache.invalidate_entry(guild_id = ctx.guild.id)
-        await ctx.send("Shortcuts have been revoked from this guild.")
+        await ctx.send("Shortcuts have been revoked from this guild.", ephemeral = True)
 
     @has_permissions(manage_messages = True)
     @shortcuts.command()
     @app_commands.describe(cmd_name = "shortcut name", cmd_msg = "stuff shortcut should display")
     async def add(self, ctx, cmd_name, *, cmd_msg):
+        """Add a shortcut to the server."""
         settings: ShortcutSetting = await self.settings_cache.query_one(guild_id = ctx.guild.id)
         if settings is None or not settings.approved:
             raise BadArgument("this feature is not approved yet")
@@ -103,12 +105,13 @@ class Shortcuts(commands.Cog):
             await ent.insert()
         self.cache.invalidate_entry(guild_id = ctx.guild.id, name = cmd_name)
 
-        await ctx.send("Updated command successfully.")
+        await ctx.send("Updated command successfully.", ephemeral = True)
 
     @has_permissions(manage_messages = True)
     @shortcuts.command()
     @app_commands.describe(cmd_name = "shortcut name")
     async def remove(self, ctx, cmd_name):
+        """Remove a shortcut from the server."""
         settings: ShortcutSetting = await self.settings_cache.query_one(guild_id = ctx.guild.id)
         if settings is None or not settings.approved:
             raise BadArgument("this feature is not approved yet")
@@ -118,10 +121,11 @@ class Shortcuts(commands.Cog):
             await ent.delete()
         self.cache.invalidate_entry(guild_id = ctx.guild.id, name = cmd_name)
 
-        await ctx.send("Removed command successfully.")
+        await ctx.send("Removed command successfully.", ephemeral = True)
 
     @shortcuts.command()
     async def list(self, ctx):
+        """List all shortcuts for this server."""
         settings: ShortcutSetting = await self.settings_cache.query_one(guild_id = ctx.guild.id)
         if settings is None or not settings.approved:
             raise BadArgument("this feature is not approved yet")
@@ -137,7 +141,7 @@ class Shortcuts(commands.Cog):
             embed.add_field(name = e.name, value = e.value[:1024])
 
         if embed.fields:
-            await ctx.send(embed = embed)
+            await ctx.send(embed = embed, ephemeral = True)
 
     add.example_usage = """
     `{prefix}shortcuts add hello Hello, World!!!!` - adds !hello to the server
@@ -192,7 +196,7 @@ class ShortcutSetting(orm.Model):
 
 
 class ShortcutEntry(orm.Model):
-    """Provides a DB config to track mutes."""
+    """Provides a DB config to track shortcuts."""
     __tablename__ = 'shortcuts'
     __primary_key__ = ("guild_id", "name")
     guild_id: psqlt.bigint
