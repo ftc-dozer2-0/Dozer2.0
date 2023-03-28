@@ -18,16 +18,17 @@ dozer_logger.level = logging.DEBUG
 discord_logger = logging.getLogger('discord')
 discord_logger.level = logging.DEBUG
 
-dozer_log_handler = logging.StreamHandler(stream=sys.stdout)
+dozer_log_handler = logging.StreamHandler(stream = sys.stdout)
 dozer_log_handler.level = logging.INFO
 dozer_logger.addHandler(dozer_log_handler)
 discord_logger.addHandler(dozer_log_handler)
-dozer_log_handler.setFormatter(fmt=logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'))
+dozer_log_handler.setFormatter(fmt = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'))
 
 MY_GUILD = discord.Object(id=1088700196675919872)  # temp testing server, will switch to ftc discord id later
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
+intents.presences = True
 
 
 class InvalidContext(commands.CheckFailure):
@@ -40,9 +41,9 @@ class InvalidContext(commands.CheckFailure):
 class DozerContext(commands.Context):
     """Cleans all messages before sending"""
 
-    async def send(self, content=None, **kwargs):  # pylint: disable=arguments-differ
+    async def send(self, content = None, **kwargs):  # pylint: disable=arguments-differ
         if content is not None:
-            content = utils.clean(self, content, mass=True, member=False, role=False, channel=False)
+            content = utils.clean(self, content, mass = True, member = False, role = False, channel = False)
 
         if "embed" in kwargs and isinstance(kwargs["embed"], discord.Embed):
             for field in kwargs["embed"].fields:
@@ -55,7 +56,7 @@ class Dozer(commands.Bot):
     """Botty things that are critical to Dozer working"""
 
     def __init__(self, config):
-        super().__init__(command_prefix=config['prefix'], intents=intents, case_insensitive=True)
+        super().__init__(command_prefix = config['prefix'], intents = intents, case_insensitive = True)
         self.config = config
         self.logger = dozer_logger
         self.restarting = False
@@ -88,9 +89,9 @@ class Dozer(commands.Bot):
             status = discord.Status.dnd
         else:
             status = discord.Status.online
-        game = discord.Game(name=f"{self.config['prefix']}help | {len(self.guilds)} guilds")
+        game = discord.Game(name = f"{self.config['prefix']}help | {len(self.guilds)} guilds")
         try:
-            await self.change_presence(activity=game, status=status)
+            await self.change_presence(activity = game, status = status)
         except TypeError:
             dozer_logger.warning("You are running an older version of the discord.py rewrite (with breaking changes)! "
                                  "To upgrade, run `pip install -r requirements.txt --upgrade`")
@@ -107,8 +108,8 @@ class Dozer(commands.Bot):
         """Update bot status to remain accurate."""
         await self.update_status()
 
-    async def get_context(self, message, *, cls=DozerContext):
-        return await super().get_context(message, cls=cls)
+    async def get_context(self, message, *, cls = DozerContext):
+        return await super().get_context(message, cls = cls)
 
     async def on_command_error(self, ctx, exception):
         if isinstance(exception, (commands.CommandNotFound, InvalidContext)):
@@ -154,38 +155,11 @@ class Dozer(commands.Bot):
         del self.config['discord_token']  # Prevent token dumping
         await super().start(token)
 
-    async def shutdown(self, restart=False):
+    async def shutdown(self, restart = False):
         """Shuts down the bot"""
         self.restarting = restart
         # await self.logout()
         await self.close()
-        await orm.close()
+        # await orm.close()
         await self.http_session.close()
         self.loop.stop()
-
-
-'''    @bot.tree.context_menu(name = "Report message to mods")
-    async def report_message(interaction: discord.Interaction, message: discord.Message):
-        # We're sending this response message with ephemeral=True, so only the command executor can see it
-        await interaction.response.send_message(
-            f'Thanks for reporting this message by {message.author.mention}! The mod team will be looking into this. ',
-            ephemeral=True
-        )
-
-        # Handle report by sending it into a log channel
-        log_channel = interaction.guild.get_channel(1065146798152372295)  # todo: replace with your channel id
-
-        embed = discord.Embed(title='Reported Message')
-        if message.content:
-            embed.description = message.content
-
-        embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
-        embed.timestamp = message.created_at
-        embed.add_field(name="Reported by",
-                        value=f"{interaction.user.display_name} | {interaction.user.name}")  # optional to add reporting person's info
-        # also optional, can add message id to db to prevent multiple reports of same message
-        url_view = discord.ui.View()
-        url_view.add_item(
-            discord.ui.Button(label='Go to Message', style=discord.ButtonStyle.url, url=message.jump_url))
-
-'''

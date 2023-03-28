@@ -16,7 +16,7 @@ def to_season_key(base_year):
     """converts a start year (2017) to a TOA season key (1718)"""
     if base_year is None:
         return None
-    return f"{(base_year) % 100}{(base_year + 1) % 100}"
+    return f"{base_year % 100}{(base_year + 1) % 100}"
 
 
 class TOA(Cog):
@@ -71,6 +71,14 @@ class TOA(Cog):
             "roverruckus": 2018,
             "rover": 2018,
             "rr2": 2018,
+            "skystone": 2019,
+            "rr3": 2019,
+            "ug": 2020,
+            "ultimategoal": 2020,
+            "freightfrenzy": 2021,
+            "ff": 2021,
+            "pp": 2022,
+            "powerplay": 2022,
         }.get(str(season_key).lower().replace("_", "").replace("-", ""), season_key)
 
     @staticmethod
@@ -144,7 +152,7 @@ It allows such a Dozer-like to ensure that it's returned data is both **accurate
 
         addn = """TOA will not (and likely never) return registration data for previous seasons,
 ~~at least intentionally~~. There is often historical and archival values to this, so FIRST data
-is used to suppliment the `season` argument of the `team` command, to allow users to look at past names
+is used to supplement the `season` argument of the `team` command, to allow users to look at past names
 and locations of teams who may have moved around or renamed over the years. """.replace("\n", " ")
         e.add_field(name="Additionally,", value=addn, inline=False)
         e.add_field(name="This is all intended to improve user experiences!",

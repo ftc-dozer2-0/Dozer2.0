@@ -87,7 +87,7 @@ async def main():
 if discord.version_info.major < 1:
     v = discord.version_info
     sys.exit(
-        f'Your installed discord.py version, {v.major}.{v.minor}.{v.macro}, is too low.'
+        f'Your installed discord.py version, {v.major}.{v.minor}.{v.micro}, is too low.'
         'Please upgrade to at least 1.0.0a'
     )
 
@@ -100,7 +100,7 @@ if not hasattr(commands, "Cog"):
 if sys.version_info < (3, 6):
     v = sys.version_info
     sys.exit(
-        f'Dozer requires Python 3.6 or higher to run. This is version {v.major}.{v.minor}.{v.macro}.'
+        f'Dozer requires Python 3.6 or higher to run. This is version {v.major}.{v.minor}.{v.micro}.'
     )
 
 if os.name == 'nt':
