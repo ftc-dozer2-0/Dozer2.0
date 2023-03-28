@@ -802,7 +802,7 @@ class Moderation(Cog):
                 await self.mod_log(ctx.author, "deafened", ctx.author, reason, ctx.channel, discord.Color.red(),
                                    global_modlog = False)
             else:
-                await ctx.send("You are already deafened!")
+                await ctx.send("You are already deafened!", ephemeral = True)
 
     selfdeafen.example_usage = """
     `{prefix}selfdeafen time (1h5m, both optional) reason` - deafens you if you need to get work done
@@ -837,7 +837,7 @@ class Moderation(Cog):
                                    orig_channel = ctx.channel, embed_color = discord.Color.green(),
                                    global_modlog = False)
             else:
-                await ctx.send("Member is not deafened!")
+                await ctx.send("Member is not deafened!", ephemeral = True)
 
     silentundeafen.example_usage = """
     `{prefix}silentundeafen @user reason` - undeafen @user for a given (optional) reason, without sending it to global modlogs
@@ -1111,9 +1111,9 @@ class Moderation(Cog):
     @serverconfig.command(name = "messagelog")
     @has_permissions(administrator = True)
     @app_commands.describe(channel_mentions = "The channel to log message edits/deletes to")
-    async def messagelogconfig(self, ctx, channel_mentions: discord.TextChannel):
+    async def messagelogconfig(self, ctx: DozerContext, channel_mentions: discord.TextChannel):
         """Set the modlog channel for a server by passing the channel id"""
-        await GuildModLog.update_guild(ctx.guild, message_log_channel_id = channel_mentions.id)
+        await GuildModLog.get_by(guild_id = ctx.guild.id, message_log_channel_id = channel_mentions.id)
         await ctx.send(ctx.message.author.mention + ', messagelog settings configured!')
 
     messagelogconfig.example_usage = """
@@ -1124,7 +1124,7 @@ class Moderation(Cog):
     @serverconfig.command(name = "welcome")
     @has_permissions(administrator = True)
     @app_commands.describe(welcome_channel = "The channel to send welcome messages to")
-    async def welcomeconfig(self, ctx, *, welcome_channel: discord.TextChannel):
+    async def welcomeconfig(self, ctx: DozerContext, *, welcome_channel: discord.TextChannel):
         """
         Sets the new member channel for this guild.
         """
@@ -1132,7 +1132,7 @@ class Moderation(Cog):
             await ctx.send("That channel is not in this guild.")
             return
 
-        await GuildModLog.update_guild(ctx.guild, welcome_channel_id = welcome_channel.id)
+        await GuildModLog.get_by(guild_id = ctx.guild.id, welcome_channel_id = welcome_channel.id)
         await ctx.send("Welcome channel set to {}".format(welcome_channel.mention))
 
     welcomeconfig.example_usage = """
