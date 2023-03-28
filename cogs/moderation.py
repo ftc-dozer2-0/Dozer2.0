@@ -442,63 +442,6 @@ class Moderation(Cog):
     `{prefix}warn @user reason` - warns a user for "reason"
     """
 
-    @commands.hybrid_command()
-    @has_permissions(manage_roles = True)
-    @bot_has_permissions(manage_roles = True)
-    @app_commands.describe(duration = "The duration of the slowmode in seconds")
-    async def timeout(self, ctx, duration: float):
-        """Set a timeout (no sending messages or adding reactions) on the current channel."""
-
-        config = await self.guild_config.query_one(guild_id = ctx.guild.id)
-        if not config:
-            config = GuildConfig.make_defaults(ctx.guild)
-            await config.insert(_upsert = "ON CONFLICT DO NOTHING")
-            self.guild_config.invalidate_entry(guild_id = ctx.guild.id)
-
-        # None-safe - nonexistent or non-configured role return None
-        member_role = ctx.guild.get_role(config.member_role_id)
-        if member_role is not None:
-            targets = {member_role}
-        else:
-            await ctx.send(
-                '{0.author.mention}, the members role has not been configured. This may not work as expected. Use '
-                '`{0.prefix}help memberconfig` to see how to set this up.'.format(
-                    ctx))
-            targets = set(sorted(ctx.guild.roles)[:ctx.author.top_role.position])
-
-        to_restore = [(target, ctx.channel.overwrites_for(target)) for target in targets]
-        for target, overwrite in to_restore:
-            new_overwrite = discord.PermissionOverwrite.from_pair(*overwrite.pair())
-            new_overwrite.update(send_messages = False, add_reactions = False)
-            await ctx.channel.set_permissions(target, overwrite = new_overwrite)
-
-        for allow_target in (ctx.me, ctx.author):
-            overwrite = ctx.channel.overwrites_for(allow_target)
-            new_overwrite = discord.PermissionOverwrite.from_pair(*overwrite.pair())
-            new_overwrite.update(send_messages = True)
-            await ctx.channel.set_permissions(allow_target, overwrite = new_overwrite)
-            to_restore.append((allow_target, overwrite))
-
-        e = discord.Embed(title = 'Timeout - {}s'.format(duration), description = 'This channel has been timed out.',
-                          color = discord.Color.blue())
-        e.set_author(name = ctx.author.display_name, icon_url = member_avatar_url(ctx.author))
-        msg = await ctx.send(embed = e)
-
-        await asyncio.sleep(duration)
-
-        for target, overwrite in to_restore:
-            if all(permission is None for _, permission in overwrite):
-                await ctx.channel.set_permissions(target, overwrite = None)
-            else:
-                await ctx.channel.set_permissions(target, overwrite = overwrite)
-
-        e.description = 'The timeout has ended.'
-        await msg.edit(embed = e)
-
-    timeout.example_usage = """
-    `{prefix}timeout 60` - prevents sending messages in this channel for 1 minute (60s)
-    """
-
     @commands.hybrid_command(aliases = ["purge", "clear"])
     @has_permissions(manage_messages = True)
     @bot_has_permissions(manage_messages = True, read_message_history = True)
@@ -552,8 +495,13 @@ class Moderation(Cog):
     `{prefix}bulkclearreactions 50 #general` - clear all reactions from the last 50 messages in #general
     """
 
-    # todo: decide if we want to keep slowmode or timeout, both do basically the same thing
-    @commands.hybrid_command()
+    #this is all already underneath the class, moderation
+
+    @commands.hybrid_group(name = "channel", invoke_without_command=True, case_insensitive=True)
+    async def channel_group(self, ctx):
+        """Manages channel settings."""
+        await ctx.send_help(ctx.command)
+    @channel_group.command(name="slowmode")
     @has_permissions(manage_roles = True)
     @bot_has_permissions(manage_channels = True)
     async def slowmode(self, ctx, slowmode_delay: int):
@@ -564,6 +512,62 @@ class Moderation(Cog):
     slowmode.example_usage = """
     `{prefix}slowmode 20` - set slowmode to 20 seconds per message per user
     """
+    @channel_group.command(name="timeout")
+    @has_permissions(manage_roles=True)
+    @bot_has_permissions(manage_roles=True)
+    @app_commands.describe(duration="The duration of the timeout in seconds")
+    async def timeout(self, ctx, duration: float):
+        """Set a timeout (no sending messages or adding reactions) on the current channel."""
+
+        config = await self.guild_config.query_one(guild_id=ctx.guild.id)
+        if not config:
+            config = GuildConfig.make_defaults(ctx.guild)
+            await config.insert(_upsert="ON CONFLICT DO NOTHING")
+            self.guild_config.invalidate_entry(guild_id=ctx.guild.id)
+
+        # None-safe - nonexistent or non-configured role return None
+        member_role = ctx.guild.get_role(config.member_role_id)
+        if member_role is not None:
+            targets = {member_role}
+        else:
+            await ctx.send(
+                '{0.author.mention}, the members role has not been configured. This may not work as expected. Use '
+                '`{0.prefix}help memberconfig` to see how to set this up.'.format(
+                    ctx))
+            targets = set(sorted(ctx.guild.roles)[:ctx.author.top_role.position])
+
+        to_restore = [(target, ctx.channel.overwrites_for(target)) for target in targets]
+        for target, overwrite in to_restore:
+            new_overwrite = discord.PermissionOverwrite.from_pair(*overwrite.pair())
+            new_overwrite.update(send_messages=False, add_reactions=False)
+            await ctx.channel.set_permissions(target, overwrite=new_overwrite)
+
+        for allow_target in (ctx.me, ctx.author):
+            overwrite = ctx.channel.overwrites_for(allow_target)
+            new_overwrite = discord.PermissionOverwrite.from_pair(*overwrite.pair())
+            new_overwrite.update(send_messages=True)
+            await ctx.channel.set_permissions(allow_target, overwrite=new_overwrite)
+            to_restore.append((allow_target, overwrite))
+
+        e = discord.Embed(title='Timeout - {}s'.format(duration), description='This channel has been timed out.',
+                          color=discord.Color.blue())
+        e.set_author(name=ctx.author.display_name, icon_url=member_avatar_url(ctx.author))
+        msg = await ctx.send(embed=e)
+
+        await asyncio.sleep(duration)
+
+        for target, overwrite in to_restore:
+            if all(permission is None for _, permission in overwrite):
+                await ctx.channel.set_permissions(target, overwrite=None)
+            else:
+                await ctx.channel.set_permissions(target, overwrite=overwrite)
+
+        e.description = 'The timeout has ended.'
+        await msg.edit(embed=e)
+
+    timeout.example_usage = """
+      `{prefix}timeout 60` - prevents sending messages in this channel for 1 minute (60s)
+      """
 
     @command(aliases = ["eject"])
     @guild_only()
@@ -593,6 +597,7 @@ class Moderation(Cog):
         await ctx.guild.unban(user_mention, reason = reason)
         await self.mod_log(actor = ctx.author, action = "unbanned", target = user_mention, reason = reason,
                            orig_channel = ctx.channel, embed_color = discord.Color.green())
+
 
     unban.example_usage = """
     `{prefix}unban user_id reason` - unban the user corresponding to the ID for a given (optional) reason
