@@ -62,7 +62,7 @@ class Moderation(Cog):
             modlog_embed.add_field(name = "Duration", value = duration)
             modlog_embed.add_field(name = "Expiration",
                                    value = f"<t:{round((datetime.datetime.now().timestamp() + duration))}:R>")
-        modlog_embed.timestamp = discord.utils.format_dt(datetime.datetime.now(), style = "R")
+        #modlog_embed.timestamp = discord.utils.format_dt(datetime.datetime.now(), style = "R")
         try:
             await target.send(embed = modlog_embed)
         except discord.Forbidden:
