@@ -202,4 +202,4 @@ class ShortcutEntry(orm.Model):
 
 async def setup(bot):
     """Adds the moderation cog to the bot."""
-    #await bot.add_cog(Shortcuts(bot))
+    await bot.add_cog(Shortcuts(bot))

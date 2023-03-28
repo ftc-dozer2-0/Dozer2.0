@@ -163,7 +163,10 @@ class Development(commands.Cog):
     @commands.hybrid_command()
     async def listservers(self, ctx):
         """Lists the servers that the bot is in. Only accessible to developers."""
-        await self.line_print(ctx, "List of servers:", self.bot.guilds, color = discord.Color.blue())
+        listserversembed = discord.Embed(title="List of servers", color=discord.Color.blue())
+        for guild in self.bot.guilds:
+            listserversembed.add_field(name=guild.name, value=f"{guild.member_count} members", inline=False)
+        await ctx.respond(embed=listserversembed, ephemeral=True)
 
     listservers.example_usage = """
     `{prefix}listservers` - display the servers the bot is in. 
