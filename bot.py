@@ -76,8 +76,8 @@ class Dozer(commands.Bot):
 
     async def setup_hook(self):
         self.http_session = aiohttp.ClientSession(loop=self.loop)
-        # these 2 lines rely on MY_GUILD, which by default is set to be the FTC discord (
-        # faster command syncing when it's specified)
+        # these 2 lines rely on MY_GUILD, which by default is set to be the FTC discord
+        # (faster command syncing when it's specified)
         self.tree.copy_global_to(guild=MY_GUILD)
         await self.tree.sync(guild=MY_GUILD)
 
@@ -111,6 +111,9 @@ class Dozer(commands.Bot):
         return await super().get_context(message, cls=cls)
 
     async def on_command_error(self, ctx, exception):
+        if isinstance(exception, (commands.CommandNotFound, InvalidContext)):
+            return  # Silent ignore
+
         if isinstance(exception, commands.NoPrivateMessage):
             await ctx.send(f'{ctx.author.mention}, This command cannot be used in DMs.')
         elif isinstance(exception, commands.UserInputError):
@@ -119,12 +122,12 @@ class Dozer(commands.Bot):
             await ctx.send(f'{ctx.author.mention}, {exception.args[0]}')
         elif isinstance(exception, commands.MissingPermissions):
             permission_names = [name.replace('guild', 'server').replace('_', ' ').title() for name in
-                                exception.missing_perms]
+                                exception.missing_permissions]
             perm_str = utils.pretty_concat(permission_names)
             await ctx.send(f'{ctx.author.mention}, you need {perm_str} permissions to run this command!')
         elif isinstance(exception, commands.BotMissingPermissions):
             permission_names = [name.replace('guild', 'server').replace('_', ' ').title() for name in
-                                exception.missing_perms]
+                                exception.missing_permissions]
             perm_str = utils.pretty_concat(permission_names)
             await ctx.send(f'{ctx.author.mention}, I need {perm_str} permissions to run this command!')
         elif isinstance(exception, commands.CommandOnCooldown):
@@ -132,8 +135,6 @@ class Dozer(commands.Bot):
                 f'{ctx.author.mention}, That command is on cooldown!'
                 f'Try again in {exception.retry_after:.2f}s!'
             )
-        elif isinstance(exception, (commands.CommandNotFound, InvalidContext)):
-            pass  # Silent ignore
         else:
             user_exception = ''.join(traceback.format_exception_only(type(exception), exception)).strip()
             await ctx.send(f'```\n${user_exception}\n```')
