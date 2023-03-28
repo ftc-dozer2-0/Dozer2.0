@@ -10,16 +10,23 @@ import discord
 from discord.ext.commands import BadArgument, has_permissions, RoleConverter, guild_only
 from discord import app_commands
 from discord.ext import commands
+from discord.utils import escape_markdown
+from loguru import logger
 
+from Components.CustomJoinLeaveMessages import send_log, CustomJoinLeaveMessages
 from ._utils import *
-from asyncdb.orm import orm
-from asyncdb import psqlt, configcache
+from context import DozerContext
+import db
+from .profile_menus import member_avatar_url
+from Components.TeamNumbers import TeamNumbers
+
+blurple = discord.Color.blurple()
 
 
 class SafeRoleConverter(RoleConverter):
     """Allows for @everyone to be specified without pinging everyone"""
 
-    async def convert(self, ctx, argument):
+    async def convert(self, ctx: DozerContext, argument):
         try:
             return await super().convert(ctx, argument)
         except BadArgument:
@@ -36,48 +43,67 @@ class Moderation(Cog):
 
     def __init__(self, bot):
         super().__init__(bot)
-        self.guild_config = GuildConfig.get_cache(bot)  # configcache.AsyncConfigCache(GuildConfig)
         self.bot = bot
+        self.links_config = db.ConfigCache(GuildMessageLinks)
+        self.punishment_timer_tasks = []
 
     """=== Helper functions ==="""
 
     # todo: clean this up
-    async def mod_log(self, actor: discord.Member, action: str, target: Union[discord.User, discord.Member], reason,
-                      orig_channel = None,
-                      embed_color = discord.Color.red(), global_modlog = True):
+    async def mod_log(self, actor: discord.Member, action: str, target: Union[discord.User, discord.Member, None],
+                      reason, orig_channel=None,
+                      embed_color=discord.Color.red(), global_modlog: bool = True, duration: bool = None,
+                      dm: bool = True, guild_override: int = None, extra_fields=None, updated_by: discord.Member = None):
         """Generates a modlog embed"""
         modlog_embed = discord.Embed(
             color = embed_color,
             title = f"User {action}!"
 
         )
-        modlog_embed.add_field(name = f"{action.capitalize()} user",
-                               value = f"{target.mention} ({target} | {target.id})", inline = False)
-        modlog_embed.add_field(name = "Requested by", value = f"{actor.mention} ({actor} | {actor.id})", inline = False)
-        modlog_embed.add_field(name = "Reason", value = self.hm_regex.sub("", reason) or "No reason provided",
-                               inline = False)
-        duration = self.hm_to_seconds(reason)
+        if target is not None:
+            modlog_embed.add_field(name = f"{action.capitalize()} user",
+                                   value = f"{target.mention} ({target} | {target.id})", inline = False)
+        modlog_embed.add_field(name = "Performed by", value = f"{actor.mention} ({actor} | {actor.id})", inline = False)
+        if updated_by is not None:
+            modlog_embed.add_field(name = "Updated by",
+                                   value = f"{updated_by.mention} ({updated_by} | {updated_by.id})", inline = False)
+        modlog_embed.add_field(name = "Reason", value = reason or "No reason specified", inline = False)
+        modlog_embed.timestamp = datetime.datetime.utcnow()
+        if extra_fields is not None:
+            for field in extra_fields:
+                modlog_embed.add_field(name = field['name'], value = field['value'], inline = field['inline'])
         if duration:
             modlog_embed.add_field(name = "Duration", value = duration)
             modlog_embed.add_field(name = "Expiration",
-                                   value = f"<t:{round((datetime.datetime.now().timestamp() + duration))}:R>")
-        modlog_embed.add_field(name = "Time", value = discord.utils.format_dt(datetime.datetime.now()))
-        modlog_embed.timestamp = datetime.datetime.now()
-        try:
-            await target.send(embed = modlog_embed)
-        except discord.Forbidden:
-            await orig_channel.send("Failed to DM modlog to user")
-        config: GuildConfig = await self.guild_config.query_one(guild_id = actor.guild.id)
+                                   value = f"<t:{round((datetime.datetime.now() + duration).timestamp())}:R>")
+        if target is not None and dm:
+            try:
+                # Add source guild after Preformed by to embed if the modlog is being sent to a DM
+                modlog_embed.insert_field_at(2, name = "Source Guild",
+                                             value = f"**{actor.guild.name}** ({actor.guild.id})")
+                await target.send(embed = modlog_embed)
+                # Remove the source guild line from the embed
+            except discord.Forbidden:
+                await orig_channel.send("Failed to DM modlog to user")
+            finally:
+                modlog_embed.remove_field(2)
+        modlog_channel = await GuildModLog.get_by(guild_id = actor.guild.id) if guild_override is None else \
+            await GuildModLog.get_by(guild_id = guild_override)
         if orig_channel is not None:
             await orig_channel.send(embed = modlog_embed)
-        if config.mod_log_channel_id is not None:
+        if len(modlog_channel) != 0:
             if global_modlog:
-                channel = actor.guild.get_channel(config.mod_log_channel_id)
+                channel = self.bot.get_guild(actor.guild.id if guild_override is None else guild_override). \
+                    get_channel(modlog_channel[0].modlog_channel)
                 if channel is not None and channel != orig_channel:  # prevent duplicate embeds
-                    await channel.send(embed = modlog_embed)
+                    try:
+                        await channel.send(embed = modlog_embed)
+                    except discord.Forbidden as e:
+                        logger.warning(
+                            f"Unable to send modlog in guild \"{channel.guild}\" ({channel.guild.id}) reason {e}")
         else:
             if orig_channel is not None:
-                await orig_channel.send("Please configure modlog channel to enable modlog functionality")
+                await orig_channel.send("Please configure modlog channel to enable modlog functionality", ephemeral = True)
 
     async def perm_override(self, member, **overwrites):
         """Applies the given overrides to the given member in their guild."""
@@ -122,7 +148,7 @@ class Moderation(Cog):
             return
 
         # register the timer
-        ent = PunishmentTimerRecord(
+        ent = PunishmentTimerRecords(
             guild_id = target.guild.id,
             actor_id = actor.id,
             target_id = target.id,
@@ -146,14 +172,13 @@ class Moderation(Cog):
                                embed_color = discord.Color.green(),
                                global_modlog = global_modlog)
             self.bot.loop.create_task(punishment.finished_callback(self, target))
-        ent = await PunishmentTimerRecord.select_one(id = ent_id)
+        ent = await PunishmentTimerRecords.select_one(id = ent_id)
         if ent:
             await ent.delete()
 
     async def _check_links_warn(self, msg, role):
         """Warns a user that they can't send links."""
-        warn_msg = await msg.channel.send(f"{msg.author.mention}, you need the `{role.name}` role to post links!",
-                                          delete_after = 3)
+        await msg.channel.send(f"{msg.author.mention}, you need the `{role.name}` role to post links!", ephemeral = True)
 
     async def check_links(self, msg):
         """Checks messages for the links role if necessary, then checks if the author is allowed to send links in the
@@ -167,10 +192,13 @@ class Moderation(Cog):
         if msg.channel.id in [676583549561995274, 771188718198456321, 761068471252680704]:
             return
 
-        config: GuildConfig = await self.guild_config.query_one(guild_id = msg.guild.id)
-        if config is None or config.links_role_id is None or config.links_role_id == msg.guild.id:
+        if msg.guild is None or not isinstance(msg.author,
+                                               discord.Member) or not msg.guild.me.guild_permissions.manage_messages:
             return
-        role = msg.guild.get_role(config.links_role_id)
+        config = await self.links_config.query_one(guild_id=msg.guild.id)
+        if config is None:
+            return
+        role = msg.guild.get_role(config.role_id)
         if role is None:
             return
         if role not in msg.author.roles and re.search("https?://", msg.content):
@@ -197,13 +225,21 @@ class Moderation(Cog):
         actor: the acting user who requested the mute
         orig_channel: the channel of the request origin
         """
-        async with orm.acquire() as conn:
-            if await Mute.select_one(member_id = member.id, guild_id = member.guild.id, _conn = conn):
-                return False  # member already muted
-            else:
-                user = Mute(member_id = member.id, guild_id = member.guild.id)
-                await user.insert(_conn = conn, _upsert = "ON CONFLICT DO NOTHING")
-                await self.perm_override(member, send_messages = False, add_reactions = False, speak = False)
+        results = await Mute.get_by(guild_id = member.guild.id, member_id = member.id)
+        if results:
+            await PunishmentTimerRecords.delete(target_id = member.id, guild_id = member.guild.id,
+                                                type_of_punishment = Mute.type)
+            await self.restart_all_timers()
+            self.bot.loop.create_task(
+                self.punishment_timer(seconds, member, Mute, reason, actor or member.guild.me,
+                                      orig_channel = orig_channel))
+            return False  # member already muted, edit preexisting record
+        else:
+            user = Mute(member_id = member.id, guild_id = member.guild.id)
+            await user.update_or_add()
+            await self.perm_override(member, send_messages = False, add_reactions = False, speak = False,
+                                     stream = False,
+                                     create_public_threads = False, create_private_threads = False)
 
             self.bot.loop.create_task(
                 self.punishment_timer(seconds, member, Mute, reason, actor or member.guild.me,
@@ -212,16 +248,19 @@ class Moderation(Cog):
 
     async def _unmute(self, member: discord.Member):
         """Unmutes a user."""
-        async with orm.acquire() as conn:
-            user = await Mute.select_one(member_id = member.id, guild_id = member.guild.id, _conn = conn)
-            if user is not None:
-                await user.delete(_conn = conn)
-                await self.perm_override(member, send_messages = None, add_reactions = None, speak = None)
-                return True
-            else:
-                return False  # member not muted
+        results = await Mute.get_by(guild_id = member.guild.id, member_id = member.id)
+        if results:
+            await Mute.delete(member_id = member.id, guild_id = member.guild.id)
+            await PunishmentTimerRecords.delete(target_id = member.id, guild_id = member.guild.id,
+                                                type_of_punishment = Mute.type)
+            await self.perm_override(member, send_messages = None, add_reactions = None, speak = None, stream = None,
+                                     create_public_threads = None, create_private_threads = None)
+            await self.restart_all_timers()
+            return True
+        else:
+            return False  # member not muted
 
-    async def _deafen(self, member: discord.Member, reason: str = "No reason provided", seconds = 0,
+    async def _deafen(self, member: discord.Member, reason: str = "No reason provided", seconds: int = 0,
                       self_inflicted: bool = False, actor = None,
                       orig_channel = None):
         """Deafens a user.
@@ -232,84 +271,142 @@ class Moderation(Cog):
         actor: the acting user who requested the mute
         orig_channel: the channel of the request origin
         """
-        async with orm.acquire() as conn:
-            if await Deafen.select_one(member_id = member.id, guild_id = member.guild.id, _conn = conn):
-                return False
-            else:
-                user = Deafen(member_id = member.id, guild_id = member.guild.id, self_inflicted = self_inflicted,
-                              _conn = conn)
-                await user.insert(_conn = conn, _upsert = "ON CONFLICT DO NOTHING")
-                await self.perm_override(member, read_messages = False, connect = False)
+        results = await Deafen.get_by(guild_id = member.guild.id, member_id = member.id)
+        if results:
+            await PunishmentTimerRecords.delete(target_id = member.id, guild_id = member.guild.id,
+                                                type_of_punishment = Deafen.type)
 
-                if self_inflicted and seconds == 0:
-                    seconds = 30  # prevent lockout in case of bad argument
-                self.bot.loop.create_task(
-                    self.punishment_timer(seconds, member,
-                                          punishment = Deafen,
-                                          reason = reason,
-                                          actor = actor or member.guild.me,
-                                          orig_channel = orig_channel,
-                                          global_modlog = not self_inflicted))
-                return True
+            await self.restart_all_timers()
+            self.bot.loop.create_task(
+                self.punishment_timer(seconds, member,
+                                      Deafen,
+                                      reason,
+                                      actor or member.guild.me,
+                                      orig_channel = orig_channel,
+                                      global_modlog = not self_inflicted))
+            return False
+        else:
+            user = Deafen(member_id = member.id, guild_id = member.guild.id, self_inflicted = self_inflicted)
+            await user.update_or_add()
+            await self.perm_override(member, read_messages = False)
+
+            if self_inflicted and seconds == 0:
+                seconds = 30  # prevent lockout in case of bad argument
+            self.bot.loop.create_task(
+                self.punishment_timer(seconds, member,
+                                      punishment = Deafen,
+                                      reason = reason,
+                                      actor = actor or member.guild.me,
+                                      orig_channel = orig_channel,
+                                      global_modlog = not self_inflicted))
+            return True
 
     async def _undeafen(self, member: discord.Member):
         """Undeafens a user."""
-        async with orm.acquire() as conn:
-            user = await Deafen.select_one(member_id = member.id, guild_id = member.guild.id, _conn = conn)
-            if user is not None:
-                await self.perm_override(member = member, read_messages = None, connect = None)
-                await user.delete(_conn = conn)
-                return True
-            else:
-                return False
+        results = await Deafen.get_by(guild_id = member.guild.id, member_id = member.id)
+        if results:
+            await self.perm_override(member = member, read_messages = None)
+            await PunishmentTimerRecords.delete(target_id = member.id, guild_id = member.guild.id,
+                                                type_of_punishment = Deafen.type)
+            await self.restart_all_timers()
+            await Deafen.delete(member_id = member.id, guild_id = member.guild.id)
+            truths = [True, results[0].self_inflicted]
+            return truths
+        else:
+            return [False]
 
     """=== Event handlers ==="""
 
-    @Cog.listener()
+    @Cog.listener('on_ready')
     async def on_ready(self):
-        """Restore punishment timers on bot startup"""
-        pass  # todo integrate with db
-        '''        async with orm.acquire() as conn:
-            q = await PunishmentTimerRecord.select(_conn = conn)
-            for r in q:
-                guild = self.bot.get_guild(r.guild_id)
-                actor = guild.get_member(r.actor_id)
-                target = guild.get_member(r.target_id)
-                orig_channel = self.bot.get_channel(r.orig_channel_id)
-                punishment_type = r.type
-                reason = r.reason or ""
-                seconds = max(int(r.target_ts - time.time()), 0.01)
-                await r.delete(_conn = conn)
-                self.bot.loop.create_task(self.punishment_timer(seconds,
-                                                                target,
-                                                                PunishmentTimerRecord.type_map[punishment_type],
-                                                                reason,
-                                                                actor,
-                                                                orig_channel = orig_channel,
-                                                                global_modlog = r.send_modlog))
-                getLogger('dozer').info(
-                    f"Restarted {PunishmentTimerRecord.type_map[punishment_type].__name__} of {target} in {guild}")'''
+        """Restore punishment timers on bot startup and trigger the nm purge cycle"""
+        await self.start_punishment_timers()
 
-    @Cog.listener()
-    async def on_member_join(self, member):
+    async def start_punishment_timers(self):
+        """Starts all punishment timers"""
+        q = await PunishmentTimerRecords.get_by()  # no filters: all
+        for r in q:
+            guild = self.bot.get_guild(r.guild_id)
+            actor = guild.get_member(r.actor_id)
+            target = guild.get_member(r.target_id)
+            orig_channel = self.bot.get_channel(r.orig_channel_id)
+            punishment_type = r.type_of_punishment
+            reason = r.reason or ""
+            seconds = max(int(r.target_ts - time.time()), 0.01)
+            await PunishmentTimerRecords.delete(id = r.id)
+            self.bot.loop.create_task(
+                self.punishment_timer(seconds, target, PunishmentTimerRecords.type_map[punishment_type], reason, actor,
+                                      orig_channel))
+            logger.info(
+                f"Restarted {PunishmentTimerRecords.type_map[punishment_type].__name__} of {target} in {guild}")
+
+    async def restart_all_timers(self):
+        """Restarts all timers"""
+        logger.info("Restarting all timers")
+        for timer in self.punishment_timer_tasks:
+            # timer: asyncio.Task
+            logger.info(f"Stopping \"{timer.get_name()}\"")
+        for timer in self.punishment_timer_tasks:
+            timer.cancel()
+        self.punishment_timer_tasks = []
+        await self.start_punishment_timers()
+
+    async def punishment_timer(self, seconds: int, target: discord.Member, punishment, reason: str,
+                               actor: discord.Member, orig_channel = None,
+                               global_modlog: bool = True):
+        """Asynchronous task that sleeps for a set time to unmute/undeafen a member for a set period of time."""
+
+        # Add this task to the list of active timer tasks
+        asyncio.current_task().set_name(f"PunishmentTimer for {target}")
+        self.punishment_timer_tasks.append(asyncio.current_task())
+
+        logger.info(
+            f"Starting{' self' if not global_modlog else ''} {punishment.__name__} timer of \"{target}\" in \"{target.guild}\" will "
+            f"expire in {seconds} seconds")
+
+        if seconds == 0:
+            return
+
+        # register the timer
+        ent = PunishmentTimerRecords(
+            guild_id = target.guild.id,
+            actor_id = actor.id,
+            target_id = target.id,
+            orig_channel_id = orig_channel.id if orig_channel else 0,
+            type_of_punishment = punishment.type,
+            reason = reason,
+            target_ts = int(seconds + time.time()),
+            self_inflicted = not global_modlog
+        )
+        await ent.update_or_add()
+
+        await asyncio.sleep(seconds)
+
+        user = await punishment.get_by(member_id = target.id)
+        if len(user) != 0:
+            await self.mod_log(actor = actor,
+                               action = "un" + punishment.past_participle,
+                               target = target,
+                               reason = reason,
+                               orig_channel = orig_channel,
+                               embed_color = discord.Color.green(),
+                               global_modlog = global_modlog)
+
+            self.punishment_timer_tasks.remove(asyncio.current_task())
+            self.bot.loop.create_task(coro = punishment.finished_callback(self, target))
+        if ent:
+            await PunishmentTimerRecords.delete(guild_id = target.guild.id, target_id = target.id,
+                                                type_of_punishment = punishment.type)
+
+    @Cog.listener('on_member_join')
+    async def on_member_join(self, member: discord.Member):
         """Logs that a member joined."""
-        join = discord.Embed(type = 'rich', color = 0x00FF00)
-        join.set_author(name = 'Member Joined', icon_url = member_avatar_url(member))
-        join.description = "{0.mention}\n{0} ({0.id})".format(member)
-        join.set_footer(text = "{} | {} members".format(member.guild.name, member.guild.member_count))
-
-        config = await self.guild_config.query_one(guild_id = member.guild.id)
-        if config is not None and config.member_log_channel_id is not None:
-            channel = member.guild.get_channel(config.member_log_channel_id)
-            await channel.send(embed = join)
-
-        async with orm.acquire() as conn:
-            user = await Mute.select_one(member_id = member.id, guild_id = member.guild.id, _conn = conn)
-            if user is not None:
-                await self.perm_override(member, add_reactions = False, send_messages = False)
-            user = await Deafen.select_one(member_id = member.id, guild_id = member.guild.id, _conn = conn)
-            if user is not None:
-                await self.perm_override(member, read_messages = False)
+        users = await Mute.get_by(guild_id = member.guild.id, member_id = member.id)
+        if users:
+            await self.perm_override(member, add_reactions = False, send_messages = False)
+        users = await Deafen.get_by(guild_id = member.guild.id, member_id = member.id)
+        if users:
+            await self.perm_override(member, read_messages = False)
 
     @Cog.listener()
     async def on_member_remove(self, member):
@@ -324,30 +421,38 @@ class Moderation(Cog):
             channel = member.guild.get_channel(config.member_log_channel_id)
             await channel.send(embed = leave)
 
-    @Cog.listener()
-    async def on_message(self, message):
+    @Cog.listener('on_message')
+    async def on_message(self, message: discord.Message):
         """Check things when messages come in."""
         if message.author.bot or message.guild is None or not message.guild.me.guild_permissions.manage_roles:
             return
-
         if await self.check_links(message):
             return
-
-        if await self.check_talking_showcase(message):
-            return
-
-        config: GuildConfig = await self.guild_config.query_one(guild_id = message.guild.id)
-
-        if config is not None and config.new_members_channel_id and config.new_members_role_id:
-            string = config.new_members_message
+        config = await GuildNewMember.get_by(guild_id = message.guild.id)
+        ctx = await self.bot.get_context(message)
+        if len(config) != 0:
+            config = config[0]
+            string = config.message
             content = message.content.casefold()
             if string not in content:
                 return
-            channel = config.new_members_channel_id
-            role_id = config.new_members_role_id
+            channel = config.channel_id
+            role_id = config.role_id
             if message.channel.id != channel:
                 return
+            if config.require_team:
+                teams = await TeamNumbers.get_by(user_id = message.author.id)
+                if len(teams) == 0:
+                    if ctx.prefix is None:
+                        ctx.prefix = self.bot.config['prefix']
+                    await message.reply(f"You must set a team number first. ex: `{ctx.prefix}setteam frc 0`")
+                    return
+
+            custom_log_config = await CustomJoinLeaveMessages.get_by(guild_id = message.guild.id)
+
             await message.author.add_roles(message.guild.get_role(role_id))
+            if custom_log_config[0].send_on_verify:
+                await send_log(member = message.author)
 
     @Cog.listener()
     async def on_message_delete(self, message):
@@ -521,24 +626,22 @@ class Moderation(Cog):
     @has_permissions(manage_roles = True)
     @bot_has_permissions(manage_roles = True)
     @app_commands.describe(duration = "The duration of the timeout in seconds")
-    async def timeout(self, ctx, duration: float):
+    async def timeout(self, ctx: DozerContext, duration: float):
         """Set a timeout (no sending messages or adding reactions) on the current channel."""
-
-        config = await self.guild_config.query_one(guild_id = ctx.guild.id)
-        if not config:
-            config = GuildConfig.make_defaults(ctx.guild)
-            await config.insert(_upsert = "ON CONFLICT DO NOTHING")
-            self.guild_config.invalidate_entry(guild_id = ctx.guild.id)
-
+        settings = await MemberRole.get_by(guild_id = ctx.guild.id)
+        if len(settings) == 0:
+            settings = MemberRole(guild_id = ctx.guild.id, member_role = MemberRole.nullify)
+            await settings.update_or_add()
+        else:
+            settings = settings[0]
         # None-safe - nonexistent or non-configured role return None
-        member_role = ctx.guild.get_role(config.member_role_id)
+        member_role = ctx.guild.get_role(settings.member_role)
         if member_role is not None:
             targets = {member_role}
         else:
             await ctx.send(
-                '{0.author.mention}, the members role has not been configured. This may not work as expected. Use '
-                '`{0.prefix}help memberconfig` to see how to set this up.'.format(
-                    ctx))
+                f'{ctx.author.mention}, the members role has not been configured. This may not work as expected. Use '
+                f'`{ctx.prefix}help memberconfig` to see how to set this up.')
             targets = set(sorted(ctx.guild.roles)[:ctx.author.top_role.position])
 
         to_restore = [(target, ctx.channel.overwrites_for(target)) for target in targets]
@@ -554,9 +657,10 @@ class Moderation(Cog):
             await ctx.channel.set_permissions(allow_target, overwrite = new_overwrite)
             to_restore.append((allow_target, overwrite))
 
-        e = discord.Embed(title = 'Timeout - {}s'.format(duration), description = 'This channel has been timed out.',
+        e = discord.Embed(title = f'Timeout - {duration}s', description = 'This channel has been timed out.',
                           color = discord.Color.blue())
-        e.set_author(name = ctx.author.display_name, icon_url = member_avatar_url(ctx.author))
+        e.set_author(name = escape_markdown(ctx.author.display_name),
+                     icon_url = ctx.author.display_avatar.replace(format = 'png', size = 32))
         msg = await ctx.send(embed = e)
 
         await asyncio.sleep(duration)
@@ -571,8 +675,8 @@ class Moderation(Cog):
         await msg.edit(embed = e)
 
     timeout.example_usage = """
-      `{prefix}timeout 60` - prevents sending messages in this channel for 1 minute (60s)
-      """
+           `{prefix}timeout 60` - prevents sending messages in this channel for 1 minute (60s)
+           """
 
     @command(aliases = ["eject"])
     @guild_only()
@@ -762,10 +866,64 @@ class Moderation(Cog):
     `{prefix}voicekick @user reason` - kick @user out of voice
     """
 
+    @commands.hybrid_command()
+    @guild_only()
+    @has_permissions(manage_roles = True)
+    async def punishments(self, ctx: DozerContext):
+        """List currently active mutes and deafens in a guild"""
+        punishments = await PunishmentTimerRecords.get_by(guild_id = ctx.guild.id)
+        deafen_records = await Deafen.get_by(guild_id = ctx.guild.id)
+        self_inflicted = [record.member_id for record in deafen_records if record.self_inflicted]
+        deafens = [punishment for punishment in punishments if
+                   punishment.type_of_punishment == 2 and punishment.target_id not in self_inflicted]
+        self_deafens = [punishment for punishment in punishments if
+                        punishment.type_of_punishment == 2 and punishment.target_id in self_inflicted]
+        mutes = [punishment for punishment in punishments if punishment.type_of_punishment == 1]
+        embed = discord.Embed(title = f"Active punishments in {ctx.guild}", color = blurple)
+        embed.set_footer(text = 'Triggered by ' + ctx.author.display_name)
+
+        def get_mention(target_id):
+            member = ctx.guild.get_member(target_id)
+            if member:
+                return member.mention
+            else:
+                return "**Member left**"
+
+        def get_name(target_id):
+            user = ctx.bot.get_user(target_id)
+            if user:
+                return user
+            else:
+                return "**Unknown#NONE**"
+
+        for field_number, punishments in enumerate(chunk(deafens, 3)):
+            embed.add_field(name = f"Deafens - {len(deafens)}", value = '\n-\n'.join(
+                f"{get_mention(punishment.target_id)} ({get_name(punishment.target_id)} | {punishment.target_id}) "
+                f"\nExpires: <t:{round(punishment.target_ts)}:R> Reason: {punishment.reason}"
+                for punishment in punishments) or 'None', inline = False)
+
+        for field_number, punishments in enumerate(chunk(mutes, 3)):
+            embed.add_field(name = f"Mutes - {len(mutes)}", value = '\n-\n'.join(
+                f"{get_mention(punishment.target_id)} ({get_name(punishment.target_id)} | {punishment.target_id}) "
+                f"\nExpires: <t:{round(punishment.target_ts)}:R> Reason: {punishment.reason}"
+                for punishment in punishments) or 'None', inline = False)
+
+        for field_number, punishments in enumerate(chunk(self_deafens, 3)):
+            embed.add_field(name = f"Self Deafens - {len(self_deafens)}", value = '\n-\n'.join(
+                f"{get_mention(punishment.target_id)} ({get_name(punishment.target_id)} | {punishment.target_id}) "
+                f"\nExpires: <t:{round(punishment.target_ts)}:R> Reason: {punishment.reason}"
+                for punishment in punishments) or 'None', inline = False)
+
+        await ctx.send(embed = embed)
+
+    punishments.example_usage = """
+       `{prefix}punishments:` Lists currently active punishments in current guild
+       """
+
     """=== Configuration commands ==="""
 
     @has_permissions(manage_guild = True)
-    @commands.hybrid_group(invoke_without_command = True, aliases = ("guildconfig",), case_insensitive = True)
+    @commands.hybrid_group(invoke_without_command = True, aliases = ("GuildModLog",), case_insensitive = True)
     async def serverconfig(self, ctx):
         """Display server configuration information"""
         guild = ctx.guild
@@ -776,7 +934,7 @@ class Moderation(Cog):
         e.set_thumbnail(url = ctx.guild.icon.url)
         config = await self.guild_config.query_one(guild_id = guild.id)
         if not config:
-            config = GuildConfig.make_defaults(guild)
+            config = GuildModLog.make_defaults(guild)
             await config.insert()
         if not config.guild_name:
             config.guild_name = guild.name
@@ -852,8 +1010,15 @@ class Moderation(Cog):
     @app_commands.describe(channel_mentions = "The channel to log moderation actions to")
     async def modlogconfig(self, ctx, channel_mentions: discord.TextChannel):
         """Set the modlog channel for a server by passing the channel id"""
-        await GuildConfig.update_guild(ctx.guild, mod_log_channel_id = channel_mentions.id)
-        await ctx.send(ctx.message.author.mention + ', modlog settings configured!')
+        config = await GuildModLog.get_by(guild_id=ctx.guild.id)
+        if len(config) != 0:
+            config = config[0]
+            config.name = ctx.guild.name
+            config.modlog_channel = channel_mentions.id
+        else:
+            config = GuildModLog(guild_id=ctx.guild.id, modlog_channel=channel_mentions.id, name=ctx.guild.name)
+        await config.update_or_add()
+        await ctx.send(ctx.message.author.mention + ', modlog settings configured!', ephemeral=True)
 
     modlogconfig.example_usage = """
     `{prefix}serverconfig modlog #mod-log` - set a channel named #mod-log to log moderation actions
@@ -867,7 +1032,7 @@ class Moderation(Cog):
     async def nmconfig(self, ctx, channel_mention: discord.TextChannel, role: discord.Role, *, message):
         """Sets the config for the new members channel"""
 
-        await GuildConfig.update_guild(ctx.guild, new_members_channel_id = channel_mention.id,
+        await GuildModLog.update_guild(ctx.guild, new_members_channel_id = channel_mention.id,
                                        new_members_role_id = role.id, new_members_message = message.casefold())
 
         role_name = role.name
@@ -892,7 +1057,7 @@ class Moderation(Cog):
         if member_role >= ctx.author.top_role:
             raise BadArgument('member role cannot be higher than your top role!')
 
-        await GuildConfig.update_guild(ctx.guild, member_role_id = member_role.id)
+        await GuildModLog.update_guild(ctx.guild, member_role_id = member_role.id)
         await ctx.send('Member role set as `{}`.'.format(member_role.name))
 
     memberconfig.example_usage = """
@@ -917,7 +1082,7 @@ class Moderation(Cog):
         if link_role >= ctx.author.top_role:
             raise BadArgument('Link role cannot be higher than your top role!')
 
-        await GuildConfig.update_guild(ctx.guild, links_role_id = link_role.id)
+        await GuildModLog.update_guild(ctx.guild, links_role_id = link_role.id)
         await ctx.send(f'Link role set as `{link_role.name}`.')
 
     linkscrubconfig.example_usage = """
@@ -935,7 +1100,7 @@ class Moderation(Cog):
     @app_commands.describe(channel_mentions = "The channel to log member join/leave events to")
     async def memberlogconfig(self, ctx, channel_mentions: discord.TextChannel):
         """Set the join/leave channel for a server by passing a channel mention"""
-        await GuildConfig.update_guild(ctx.guild, member_log_channel_id = channel_mentions.id)
+        await GuildModLog.update_guild(ctx.guild, member_log_channel_id = channel_mentions.id)
         await ctx.send(ctx.message.author.mention + ', memberlog settings configured!')
 
     memberlogconfig.example_usage = """
@@ -948,7 +1113,7 @@ class Moderation(Cog):
     @app_commands.describe(channel_mentions = "The channel to log message edits/deletes to")
     async def messagelogconfig(self, ctx, channel_mentions: discord.TextChannel):
         """Set the modlog channel for a server by passing the channel id"""
-        await GuildConfig.update_guild(ctx.guild, message_log_channel_id = channel_mentions.id)
+        await GuildModLog.update_guild(ctx.guild, message_log_channel_id = channel_mentions.id)
         await ctx.send(ctx.message.author.mention + ', messagelog settings configured!')
 
     messagelogconfig.example_usage = """
@@ -967,7 +1132,7 @@ class Moderation(Cog):
             await ctx.send("That channel is not in this guild.")
             return
 
-        await GuildConfig.update_guild(ctx.guild, welcome_channel_id = welcome_channel.id)
+        await GuildModLog.update_guild(ctx.guild, welcome_channel_id = welcome_channel.id)
         await ctx.send("Welcome channel set to {}".format(welcome_channel.mention))
 
     welcomeconfig.example_usage = """
@@ -975,135 +1140,325 @@ class Moderation(Cog):
     """
 
 
-class GuildConfigCache(configcache.AsyncConfigCache):
-    """we need an override so that query_one always returns a guild"""
+class GuildModLog(db.DatabaseTable):
+    """Holds modlog info"""
+    __tablename__ = 'modlogconfig'
+    __uniques__ = 'guild_id'
 
-    def __init__(self, bot):
-        super().__init__(GuildConfig)
-        self.bot = bot
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint PRIMARY KEY NOT NULL,
+            modlog_channel bigint null,
+            name varchar NOT NULL
+            )""")
 
-    # override
-    async def query_one(self, **kwargs):
-        """always return a guild (and insert a new one if needed)"""
-        if "guild_id" not in kwargs:
-            raise ValueError("you probably want a guild_id defined")
-        guild_id = kwargs["guild_id"]
-        config = await super().query_one(**kwargs)
-        if config is None:
-            config = GuildConfig.make_defaults(self.bot.get_guild(guild_id))
-            await config.insert(_upsert = "ON CONFLICT DO NOTHING")
-            self.invalidate_entry(guild_id = guild_id)
-        return config
+    def __init__(self, guild_id: int, modlog_channel: int, name: str):
+        super().__init__()
+        self.guild_id = guild_id
+        self.modlog_channel = modlog_channel
+        self.name = name
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = GuildModLog(guild_id=result.get("guild_id"), modlog_channel=result.get("modlog_channel"),
+                              name=result.get("name"))
+            result_list.append(obj)
+        return result_list
 
 
-# ALTER TABLE mutes RENAME COLUMN id TO member_id
-# ALTER TABLE deafens RENAME COLUMN id TO member_id
-class Mute(orm.Model):
-    """Provides a DB config to track mutes."""
-    __tablename__ = 'mutes'
-    __primary_key__ = ("member_id", "guild_id")
-    member_id: psqlt.bigint
-    guild_id: psqlt.bigint
+class Mute(db.DatabaseTable):
+    """Holds mute info"""
+    type = 1
     past_participle = "muted"
     finished_callback = Moderation._unmute
-    type = 1
+    __tablename__ = 'mutes'
+    __uniques__ = 'guild_id, member_id'
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            member_id bigint NOT NULL,
+            guild_id bigint NOT NULL,
+            PRIMARY KEY (member_id, guild_id)
+            )""")
+
+    def __init__(self, member_id: int, guild_id: int):
+        super().__init__()
+        self.member_id = member_id
+        self.guild_id = guild_id
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = Mute(member_id = result.get("member_id"), guild_id = result.get("guild_id"))
+            result_list.append(obj)
+        return result_list
+
+    async def update_or_add(self):
+        """Assign the attribute to this object, then call this method to either insert the object if it doesn't exist in
+        the DB or update it if it does exist. It will update every column not specified in __uniques__."""
+        # This is its own functions because all columns must be unique, which breaks the syntax of the other one
+        keys = []
+        values = []
+        for var, value in self.__dict__.items():
+            # Done so that the two are guaranteed to be in the same order, which isn't true of keys() and values()
+            if value is not None:
+                keys.append(var)
+                values.append(value)
+        async with db.Pool.acquire() as conn:
+            statement = f"""
+            INSERT INTO {self.__tablename__} ({", ".join(keys)})
+            VALUES({','.join(f'${i + 1}' for i in range(len(values)))}) 
+            """
+            await conn.execute(statement, *values)
 
 
-class Deafen(orm.Model):
-    """Provides a DB config to track deafens."""
+class Deafen(db.DatabaseTable):
+    """Holds deafens"""
+    type = 2
     __tablename__ = 'deafens'
-    __primary_key__ = ("member_id", "guild_id")
-    member_id: psqlt.bigint
-    guild_id: psqlt.bigint
-    self_inflicted: psqlt.boolean
+    __uniques__ = 'member_id, guild_id'
     past_participle = "deafened"
     finished_callback = Moderation._undeafen
-    type = 2
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            member_id bigint NOT NULL,
+            guild_id bigint NOT NULL,
+            self_inflicted boolean NOT NULL,
+            PRIMARY KEY (member_id, guild_id)
+            )""")
+
+    def __init__(self, member_id: int, guild_id: int, self_inflicted: bool):
+        super().__init__()
+        self.member_id = member_id
+        self.guild_id = guild_id
+        self.self_inflicted = self_inflicted
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = Deafen(member_id = result.get("member_id"), guild_id = result.get("guild_id"),
+                         self_inflicted = result.get("self_inflicted"))
+            result_list.append(obj)
+        return result_list
 
 
-class PunishmentTimerRecord(orm.Model):
-    """Keeps track of current punishment timers in case the bot is restarted."""
-    __tablename__ = "punishment_timers"
-    __primary_key__ = ("id",)
-    # the `id` field is autoincremented by sqlalchemy
-    # DON'T change this to a bigint or stuff breaks. whoops.
-    # and when on earth are you going to have more than 2 billion punishment timers going, anyway?
-    id: psqlt.Column("serial")
-    guild_id: psqlt.bigint
-    actor_id: psqlt.bigint
-    target_id: psqlt.bigint
-    orig_channel_id: psqlt.bigint
-    type: psqlt.bigint
-    reason: psqlt.text
-    target_ts: psqlt.bigint
-    send_modlog: psqlt.boolean
+class MemberRole(db.DatabaseTable):
+    """Holds info on member roles used for timeouts"""
+    __tablename__ = 'member_roles'
+    __uniques__ = 'guild_id'
 
-    async def insert(self, _conn = None, _upsert = None, _fields = None):
-        """we need to redefine this for this class to account for some _serial_ shortcomings in the orm"""
-        fields = [k for k in self._columns.keys() if k != "id"]
-        qs = f"INSERT INTO {self.__schemaname__}.{self.__tablename__}({','.join(fields)}) VALUES(" + ",".join(
-            f"${i}" for i in range(1, len(fields) + 1)) + ") RETURNING id"
-        args = [qs] + [getattr(self, f) for f in fields]
-        return (await self._fetch(args, _one = True, conn = _conn))["id"]
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint PRIMARY KEY NOT NULL,
+            member_role bigint null
+            )""")
+
+    def __init__(self, guild_id: int, member_role: int = None):
+        super().__init__()
+        self.guild_id = guild_id
+        self.member_role = member_role
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = MemberRole(member_role = result.get("member_role"), guild_id = result.get("guild_id"))
+            result_list.append(obj)
+        return result_list
+
+
+class NewMemPurgeConfig(db.DatabaseTable):
+    """Holds info on member purge routines"""
+    __tablename__ = 'member_purge_configs'
+    __uniques__ = 'guild_id'
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint PRIMARY KEY NOT NULL,
+            member_role bigint not null,
+            days int not null
+            )""")
+
+    def __init__(self, guild_id: int, member_role: int, days: int):
+        super().__init__()
+        self.guild_id = guild_id
+        self.member_role = member_role
+        self.days = days
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = NewMemPurgeConfig(member_role = result.get("member_role"),
+                                    guild_id = result.get("guild_id"),
+                                    days = result.get("days"))
+            result_list.append(obj)
+        return result_list
+
+
+class GuildNewMember(db.DatabaseTable):
+    """Holds new member info"""
+    __tablename__ = 'new_members'
+    __uniques__ = 'guild_id'
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint PRIMARY KEY,
+            channel_id bigint NOT NULL,
+            role_id bigint NOT NULL,
+            message varchar NOT NULL
+            )""")
+
+    def __init__(self, guild_id: int, channel_id: int, role_id: int, message: str, require_team: bool):
+        super().__init__()
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.role_id = role_id
+        self.message = message
+        self.require_team = require_team
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = GuildNewMember(guild_id = result.get("guild_id"), channel_id = result.get("channel_id"),
+                                 role_id = result.get("role_id"), message = result.get("message"),
+                                 require_team = result.get("require_team"))
+            result_list.append(obj)
+        return result_list
+
+    async def version_1(self):
+        """DB migration v1"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            ALTER TABLE {self.__tablename__} ADD require_team bool NOT NULL DEFAULT false;
+            """)
+
+    __versions__ = [version_1]
+
+
+class GuildMessageLinks(db.DatabaseTable):
+    """Contains information for link scrubbing"""
+    __tablename__ = 'guild_msg_links'
+    __uniques__ = 'guild_id'
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint PRIMARY KEY NOT NULL,
+            role_id bigint null
+            )""")
+
+    def __init__(self, guild_id: int, role_id: int = None):
+        super().__init__()
+        self.guild_id = guild_id
+        self.role_id = role_id
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = GuildMessageLinks(guild_id = result.get("guild_id"), role_id = result.get("role_id"))
+            result_list.append(obj)
+        return result_list
+
+
+class PunishmentTimerRecords(db.DatabaseTable):
+    """Punishment Timer Records"""
     type_map = {p.type: p for p in (Mute, Deafen)}
-
-
-class GuildConfig(orm.Model):
-    """Stores guild specific general configuration. """
-    __tablename__ = "guild_config"
-    __primary_key__ = ("guild_id",)
-    _cache = None
-    guild_id: psqlt.bigint
-    guild_name: psqlt.text
-
-    new_members_channel_id: psqlt.bigint
-    new_members_role_id: psqlt.bigint
-    new_members_message: psqlt.text
-
-    mod_log_channel_id: psqlt.bigint
-    member_log_channel_id: psqlt.bigint
-    message_log_channel_id: psqlt.bigint
-    welcome_channel_id: psqlt.bigint
-
-    member_role_id: psqlt.bigint
-    links_role_id: psqlt.bigint
+    __tablename__ = 'punishment_timers'
+    __uniques__ = 'id'
 
     @classmethod
-    def make_defaults(cls, guild):
-        """generate sane default settings"""
-        gc = cls()
-        gc.guild_id = guild.id
-        gc.guild_name = guild.name
-        gc.member_role_id = guild.id
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            id serial PRIMARY KEY NOT NULL,
+            guild_id bigint NOT NULL,
+            actor_id bigint NOT NULL,
+            target_id bigint NOT NULL,
+            orig_channel_id bigint null,
+            type_of_punishment bigint NOT NULL,
+            reason varchar null,
+            target_ts bigint NOT NULL
+            )""")
 
-        return gc
+    def __init__(self, guild_id: int, actor_id: int, target_id: int, type_of_punishment: int, target_ts: int,
+                 orig_channel_id: int = None, reason: str = None, input_id: int = None, self_inflicted: bool = False):
+        super().__init__()
+        self.id = input_id
+        self.guild_id = guild_id
+        self.actor_id = actor_id
+        self.target_id = target_id
+        self.type_of_punishment = type_of_punishment
+        self.target_ts = target_ts
+        self.orig_channel_id = orig_channel_id
+        self.reason = reason
+        self.self_inflicted = self_inflicted
 
     @classmethod
-    def get_cache(cls, bot):
-        """create or return a new cache"""
-        if not cls._cache:
-            cls._cache = GuildConfigCache(bot)
-            # configcache.AsyncConfigCache(GuildConfig)
-        return cls._cache
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = PunishmentTimerRecords(guild_id = result.get("guild_id"), actor_id = result.get("actor_id"),
+                                         target_id = result.get("target_id"),
+                                         type_of_punishment = result.get("type_of_punishment"),
+                                         target_ts = result.get("target_ts"),
+                                         orig_channel_id = result.get("orig_channel_id"), reason = result.get("reason"),
+                                         input_id = result.get('id'), self_inflicted = result.get("self_inflicted"))
+            result_list.append(obj)
+        return result_list
 
-    @classmethod
-    async def update_guild(cls, guild: discord.Guild, **kwargs):
-        """update settings for a guild"""
-        config = await cls._cache.query_one(guild_id = guild.id)
+    async def version_1(self):
+        """DB migration v1"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            ALTER TABLE {self.__tablename__} ADD self_inflicted bool NOT NULL DEFAULT false;
+            """)
 
-        ins = False
-        if config is None:
-            config = GuildConfig.make_defaults(guild)
-            ins = True
-        config.guild_name = guild.name
-
-        for k, v in kwargs.items():
-            setattr(config, k, v)
-        if ins:
-            await config.insert()
-        else:
-            await config.update()
-        cls._cache.invalidate_entry(guild_id = guild.id)
+    __versions__ = [version_1]
 
 
 async def setup(bot):
