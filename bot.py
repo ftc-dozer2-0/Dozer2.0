@@ -61,6 +61,7 @@ class Dozer(commands.Bot):
         await db_migrate()
         self.tree.copy_global_to(guild = MY_GUILD)  # these 2 lines rely on MY_GUILD, which by default is set to be
         # the FTC discord (faster command syncing when it's specified)
+        self.tree.clear_commands(guild = MY_GUILD)
         await self.tree.sync(guild = MY_GUILD)
         await self.tree.sync()
 
