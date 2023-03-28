@@ -64,6 +64,16 @@ class Dozer(commands.Bot):
         if 'log_level' in config:
             dozer_log_handler.setLevel(config['log_level'])
 
+    @staticmethod
+    def global_checks(ctx):
+        """Checks that should be executed before passed to the command"""
+        if ctx.author.bot:
+            raise InvalidContext('Bots cannot run commands!')
+        retry_after = False  # self._global_cooldown.update_rate_limit()
+        if retry_after and not hasattr(ctx, "is_pseudo"):  # bypass ratelimit for su'ed commands
+            raise InvalidContext('Global rate-limit exceeded!')
+        return True
+
     async def setup_hook(self):
         self.http_session = aiohttp.ClientSession(loop=self.loop)
         # these 2 lines rely on MY_GUILD, which by default is set to be the FTC discord (
@@ -125,27 +135,18 @@ class Dozer(commands.Bot):
         elif isinstance(exception, (commands.CommandNotFound, InvalidContext)):
             pass  # Silent ignore
         else:
-            await ctx.send(
-                '```\n%s\n```' % ''.join(traceback.format_exception_only(type(exception), exception)).strip())
-            if isinstance(ctx.channel, discord.TextChannel):
-                dozer_logger.error('Error in command <{0}> ({1.name!r}:({1.id}) {2}:({2.id}) {3}:({3.id}) {4})'
-                                   ''.format(ctx.command, ctx.guild, ctx.channel, ctx.author,
-                                             ctx.message.content))
-            else:
-                dozer_logger.error(
-                    'Error in command <{0}> (DM {1}:({1}.id) {2})'.format(ctx.command, ctx.channel.recipient,
-                                                                          ctx.message.content))
-            dozer_logger.error(''.join(traceback.format_exception(type(exception), exception, exception.__traceback__)))
+            user_exception = ''.join(traceback.format_exception_only(type(exception), exception)).strip()
+            await ctx.send(f'```\n${user_exception}\n```')
 
-    @staticmethod
-    def global_checks(ctx):
-        """Checks that should be executed before passed to the command"""
-        if ctx.author.bot:
-            raise InvalidContext('Bots cannot run commands!')
-        retry_after = False  # self._global_cooldown.update_rate_limit()
-        if retry_after and not hasattr(ctx, "is_pseudo"):  # bypass ratelimit for su'ed commands
-            raise InvalidContext('Global rate-limit exceeded!')
-        return True
+            if isinstance(ctx.channel, discord.TextChannel):
+                dozer_logger.error('Error in command <{0}> ({1.name!r}:({1.id}) {2}:({2.id}) {3}:({3.id}) {4})',
+                                   ctx.command, ctx.guild, ctx.channel, ctx.author, ctx.message.content)
+            else:
+                dozer_logger.error('Error in command <{0}> (DM {1}:({1}.id) {2})',
+                                   ctx.command, ctx.channel.recipient, ctx.message.content)
+
+            logging_exception = ''.join(traceback.format_exception(type(exception), exception, exception.__traceback__))
+            dozer_logger.error(logging_exception)
 
     async def run(self, *args, **kwargs):
         token = self.config['discord_token']
