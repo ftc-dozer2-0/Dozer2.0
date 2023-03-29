@@ -17,8 +17,6 @@ class Shortcuts(commands.Cog):
 
     def __init__(self, bot):
         """cog init"""
-        self.settings_cache = db.ConfigCache(ShortcutSetting)
-        self.cache = db.ConfigCache(ShortcutEntry)
         self.guild_table: Dict[int, Dict[str, str]] = {}
         self.bot = bot
 
@@ -47,7 +45,7 @@ class Shortcuts(commands.Cog):
         """Approve the server to use shortcuts"""
         if ctx.author.id not in ctx.bot.config['developers']:
             raise NotOwner('you are not a developer!')
-        settings: ShortcutSetting = await self.settings_cache.query_one(guild_id = ctx.guild.id)
+        settings = await ShortcutSetting.get_by(guild_id = ctx.guild.id)
         if settings is None:
             settings = ShortcutSetting(guild_id = ctx.guild.id, approved = True, prefix = prefix)
             await settings.update_or_add()
@@ -74,25 +72,22 @@ class Shortcuts(commands.Cog):
     @app_commands.describe(cmd_name = "shortcut name", cmd_msg = "stuff shortcut should display")
     async def add(self, ctx: DozerContext, cmd_name, *, cmd_msg):
         """Add a shortcut to the server."""
-        settings: ShortcutSetting = await self.settings_cache.query_one(guild_id = ctx.guild.id)
-        if settings is None or not settings.approved:
+        settings = await ShortcutSetting.get_by(guild_id = ctx.guild.id)
+        if settings is None or not [settings.approved for settings in settings if settings.guild_id == ctx.guild.id]:
             raise BadArgument("this feature is not approved yet")
-        if not cmd_name.startswith(settings.prefix):
-            raise BadArgument("command must start with the prefix " + settings.prefix)
         if len(cmd_name) > self.MAX_LEN:
             raise BadArgument(f"command names can only be up to {self.MAX_LEN} chars long")
         if not cmd_msg:
             raise BadArgument("can't have null message")
-
-        ent: ShortcutEntry = await self.cache.query_one(guild_id = ctx.guild.id, name = cmd_name)
+        prefix = [settings.prefix for settings in settings if settings.guild_id == ctx.guild.id]
+        ent = ShortcutEntry.get_by(guild_id = ctx.guild.id, name = f"{prefix}{cmd_name}")
         if ent:
             ent.value = cmd_msg
             await ent.update_or_add()
         else:
-            ent = ShortcutEntry(guild_id = ctx.guild.id, name = cmd_name, value = cmd_msg)
+            ent = ShortcutEntry(guild_id = ctx.guild.id, name = f"{prefix}{cmd_name}", value = cmd_msg)
+            print(ent)
             await ent.update_or_add()
-        self.cache.invalidate_entry(guild_id = ctx.guild.id, name = cmd_name)
-
         await ctx.send("Updated command successfully.", ephemeral = True)
 
     @has_permissions(manage_messages = True)
@@ -100,22 +95,20 @@ class Shortcuts(commands.Cog):
     @app_commands.describe(cmd_name = "shortcut name")
     async def remove(self, ctx: DozerContext, cmd_name):
         """Remove a shortcut from the server."""
-        settings: ShortcutSetting = await self.settings_cache.query_one(guild_id = ctx.guild.id)
-        if settings is None or not settings.approved:
+        settings = await ShortcutSetting.get_by(guild_id = ctx.guild.id)
+        if settings is None or not [settings.approved for settings in settings if settings.guild_id == ctx.guild.id]:
             raise BadArgument("this feature is not approved yet")
 
-        ent: ShortcutEntry = await self.cache.query_one(guild_id = ctx.guild.id, name = cmd_name)
+        ent = ShortcutEntry.get_by(guild_id = ctx.guild.id, name = cmd_name)
         if ent:
             await ent.delete()
-        self.cache.invalidate_entry(guild_id = ctx.guild.id, name = cmd_name)
-
         await ctx.send("Removed command successfully.", ephemeral = True)
 
     @shortcuts.command()
     async def list(self, ctx: DozerContext):
         """List all shortcuts for this server."""
-        settings: ShortcutSetting = await self.settings_cache.query_one(guild_id = ctx.guild.id)
-        if settings is None or not settings.approved:
+        settings = ShortcutSetting.get_by(guild_id = ctx.guild.id)
+        if settings is None or not [settings.approved for settings in settings if settings.guild_id == ctx.guild.id]:
             raise BadArgument("this feature is not approved yet")
 
         ents: List[ShortcutEntry] = await ShortcutEntry.get_by(guild_id = ctx.guild.id)
@@ -152,15 +145,15 @@ class Shortcuts(commands.Cog):
         """prefix scanner"""
         if not msg.guild or msg.author.bot:
             return
-        setting = await self.settings_cache.query_one(guild_id = msg.guild.id)
-        if setting is None or not setting.approved:
+        setting = await ShortcutSetting.get_by(guild_id = msg.guild.id)
+        if setting is None or not [setting.approved for setting in setting if setting.guild_id == msg.guild.id]:
             return
 
         c = msg.content
-        if len(c) < len(setting.prefix):
+        if len(c) < len([setting.prefix for setting in setting if setting.guild_id == msg.guild.id]):
             return
 
-        if not c.startswith(setting.prefix):
+        if not c.startswith([setting.prefix for setting in setting if setting.guild_id == msg.guild.id]):
             return
 
         shortcuts = await ShortcutEntry.get_by(guild_id = msg.guild.id)
@@ -185,7 +178,7 @@ class ShortcutSetting(db.DatabaseTable):
             CREATE TABLE {cls.__tablename__} (
             guild_id bigint PRIMARY KEY NOT NULL,
             approved boolean NOT NULL,
-            prefix text null
+            prefix text null,
             )""")
 
     def __init__(self, guild_id: int, approved: bool, prefix: str = '!'):
@@ -213,13 +206,15 @@ class ShortcutEntry(db.DatabaseTable):
     @classmethod
     async def initial_create(cls):
         async with db.Pool.acquire() as conn:
-            await conn.execute(f"""
+            query = f"""
             CREATE TABLE {cls.__tablename__} (
-            guild_id bigint NOT NULL,
+            guild_id bigint PRIMARY KEY NOT NULL,
             name text NOT NULL,
             value text NOT NULL,
-            PRIMARY KEY (guild_id, name)
-            )""")
+            UNIQUE (guild_id, name)
+            )"""
+            print(query)
+            await conn.execute(query)
 
     def __init__(self, guild_id: int, name: str, value: str):
         super().__init__()
@@ -235,6 +230,7 @@ class ShortcutEntry(db.DatabaseTable):
             thing = ShortcutEntry(guild_id = result.get('guild_id'), name = result.get('name'),
                                   value = result.get('value'))
             results_list.append(thing)
+        print(results_list)
         return results_list
 
 
