@@ -77,6 +77,12 @@ class Shortcuts(commands.Cog):
     @app_commands.describe(cmd_name="shortcut name", cmd_msg="stuff shortcut should display")
     async def add(self, ctx: DozerContext, cmd_name, *, cmd_msg):
         """Add a shortcut to the server."""
+
+        cmd_name = cmd_name.casefold()
+
+        if not cmd_msg:
+            raise BadArgument("Command message is null or empty. How?")
+
         setting = await ShortcutSetting.get_unique_by(guild_id=ctx.guild.id)
         if setting is None or not setting.approved:
             await ctx.send("This feature is not approved yet.", ephemeral=True)
@@ -86,16 +92,12 @@ class Shortcuts(commands.Cog):
             await ctx.send(f"Command names can only be up to {self.MAX_LEN} chars long.", ephemeral=True)
             return
 
-        if not cmd_msg.strip():
-            await ctx.send(f"Can't have null message.", ephemeral=True)
-            return
-
-        ent = await ShortcutEntry.get_unique_by(guild_id=ctx.guild.id, name=f"{setting.prefix}{cmd_name}")
+        ent = await ShortcutEntry.get_unique_by(guild_id=ctx.guild.id, name=cmd_name)
         if ent:
             ent.value = cmd_msg
             await ent.update_or_add()
         else:
-            ent = ShortcutEntry(guild_id=ctx.guild.id, name=f"{setting.prefix}{cmd_name}", value=cmd_msg)
+            ent = ShortcutEntry(guild_id=ctx.guild.id, name=cmd_name, value=cmd_msg)
             await ent.update_or_add()
 
         await ctx.send("Updated command successfully.", ephemeral=True)
@@ -105,12 +107,15 @@ class Shortcuts(commands.Cog):
     @app_commands.describe(cmd_name="shortcut name")
     async def remove(self, ctx: DozerContext, cmd_name):
         """Remove a shortcut from the server."""
+
+        cmd_name = cmd_name.casefold()
+
         setting = await ShortcutSetting.get_unique_by(guild_id=ctx.guild.id)
         if setting is None or not setting.approved:
             await ctx.send("This feature is not approved yet.", ephemeral=True)
             return
 
-        ent = await ShortcutEntry.get_unique_by(guild_id=ctx.guild.id, name=f'{setting.prefix}{cmd_name}')
+        ent = await ShortcutEntry.get_unique_by(guild_id=ctx.guild.id, name=cmd_name)
         if not ent:
             await ctx.send("No such shortcut.", ephemeral=True)
             return
@@ -139,7 +144,7 @@ class Shortcuts(commands.Cog):
                     await ctx.send(embed=embed)
                 embed = discord.Embed()
                 embed.title = "Shortcuts for this guild"
-            embed.add_field(name=e.name, value=e.value[:1024])
+            embed.add_field(name=setting.prefix + e.name, value=e.value[:1024])  # Max embed field length is 1024
 
         if embed.fields:
             await ctx.send(embed=embed, ephemeral=True)
@@ -162,15 +167,9 @@ class Shortcuts(commands.Cog):
         if not msg.content.startswith(setting.prefix):
             return
 
-        # TODO: Custom query for case insensitive unique search by shortcut name on db side
-        shortcuts = await ShortcutEntry.get_by(guild_id=msg.guild.id)
-        if not shortcuts:
-            return
-
-        for shortcut in shortcuts:
-            if msg.content.casefold() == shortcut.name.casefold():
-                await msg.channel.send(shortcut.value)
-                return
+        cmd = msg.content.removeprefix(setting.prefix).casefold()
+        shortcut = await ShortcutEntry.get_unique_by(guild_id=msg.guild.id, name=cmd)
+        await msg.channel.send(shortcut.value)
 
 
 class ShortcutSetting(db.DatabaseTable):
