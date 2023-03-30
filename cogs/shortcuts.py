@@ -125,6 +125,11 @@ class Shortcuts(commands.Cog):
             return
 
         entries: List[ShortcutEntry] = await ShortcutEntry.get_by(guild_id=ctx.guild.id)
+
+        if not entries:
+            await ctx.send("There are no shortcuts for this server.", ephemeral=True)
+            return
+
         embed = None
         for i, e in enumerate(entries):
             if i % 20 == 0:
@@ -136,17 +141,6 @@ class Shortcuts(commands.Cog):
 
         if embed.fields:
             await ctx.send(embed=embed, ephemeral=True)
-
-    add.example_usage = """
-    `{prefix}shortcuts add hello Hello, World!!!!` - adds !hello to the server
-    """
-
-    remove.example_usage = """
-    `{prefix}shortcuts remove hello  - removes !hello
-    """
-    list.example_usage = """
-    `{prefix}shortcuts list - lists all shortcuts
-    """
 
     @Cog.listener()
     async def on_ready(self):
