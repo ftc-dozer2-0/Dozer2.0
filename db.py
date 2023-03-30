@@ -1,5 +1,5 @@
 """Provides database storage for the Dozer Discord bot"""
-from typing import List, Dict
+from typing import List, Dict, Tuple, Callable, Coroutine
 
 import asyncpg
 from loguru import logger
@@ -10,13 +10,14 @@ Pool = None
 async def db_init(db_url):
     """Initializes the database connection"""
     global Pool
-    Pool = await asyncpg.create_pool(statement_cache_size = 0, dsn=db_url, command_timeout=15)
+    Pool = await asyncpg.create_pool(statement_cache_size=0, dsn=db_url, command_timeout=15)
 
 
 async def db_migrate():
     """Gets all subclasses and checks their migrations."""
     async with Pool.acquire() as conn:
-        await conn.execute("""CREATE TABLE IF NOT EXISTS versions (table_name text PRIMARY KEY, version_num int NOT NULL)""")
+        await conn.execute(
+            """CREATE TABLE IF NOT EXISTS versions (table_name text PRIMARY KEY, version_num int NOT NULL)""")
     logger.info("Checking for db migrations")
     for cls in DatabaseTable.__subclasses__():
         exists = await Pool.fetchrow("""SELECT EXISTS(
@@ -28,7 +29,7 @@ async def db_migrate():
             await cls.initial_create()
 
         version = await Pool.fetchrow("""SELECT version_num FROM versions WHERE table_name = $1""",
-                                        cls.__tablename__)
+                                      cls.__tablename__)
         if version is None:
             # Migration/creation required, go to the function in the subclass for it
             await cls.initial_migrate()
@@ -42,15 +43,15 @@ async def db_migrate():
                 logger.info(f"Successfully updated table {cls.__tablename__} from version {i} to {i + 1}")
             async with Pool.acquire() as conn:
                 await conn.execute("""UPDATE versions SET version_num = $1 WHERE table_name = $2""",
-                                    len(cls.__versions__), cls.__tablename__)
+                                   len(cls.__versions__), cls.__tablename__)
     logger.info("All db migrations complete.")
 
 
 class DatabaseTable:
     """Defines a database table"""
     __tablename__: str = ''
-    __versions__: List[int] = []
-    __uniques__: List[str] = []
+    __versions__: Tuple[Callable[[], Coroutine]] = []
+    __uniques__: Tuple[str] = []
 
     # Declare the migrate/create functions
     @classmethod
@@ -97,14 +98,14 @@ class DatabaseTable:
                 statement = f"""
                 INSERT INTO {self.__tablename__} ({", ".join(keys)})
                 VALUES({','.join(f'${i + 1}' for i in range(len(values)))})
-                ON CONFLICT ({self.__uniques__}) DO UPDATE
+                ON CONFLICT ({','.join(self.__uniques__)}) DO UPDATE
                 SET {updates}
                 """
             else:
                 statement = f"""
                 INSERT INTO {self.__tablename__} ({", ".join(keys)})
                 VALUES({','.join(f'${i + 1}' for i in range(len(values)))})
-                ON CONFLICT ({self.__uniques__}) DO NOTHING;
+                ON CONFLICT ({','.join(self.__uniques__)}) DO NOTHING;
                 """
             await conn.execute(statement, *values)
 

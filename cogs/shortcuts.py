@@ -52,7 +52,6 @@ class Shortcuts(commands.Cog):
         else:
             setting.approved = True
             await setting.update_or_add()
-        self.settings_cache.invalidate_entry(guild_id=ctx.guild.id)
         await ctx.send("Shortcuts approved for this guild", ephemeral=True)
 
     @shortcuts.command()
@@ -60,11 +59,15 @@ class Shortcuts(commands.Cog):
         """Revoke the server's ability to use shortcuts"""
         if ctx.author.id not in ctx.bot.config['developers']:
             raise NotOwner('you are not a developer!')
-        settings: ShortcutSetting = await self.settings_cache.query_one(guild_id=ctx.guild.id)
-        if settings is not None:
-            settings.approved = False
-            await settings.update_or_add()
-            self.settings_cache.invalidate_entry(guild_id=ctx.guild.id)
+
+        setting = await ShortcutSetting.get_unique_by(guild_id=ctx.guild.id)
+        if not setting or not setting.approved:
+            await ctx.send("Shortcuts were not enabled on this guild.", ephemeral=True)
+            return
+
+        setting.approved = False
+        await setting.update_or_add()
+
         await ctx.send("Shortcuts have been revoked from this guild.", ephemeral=True)
 
     @has_permissions(manage_messages=True)
@@ -105,9 +108,10 @@ class Shortcuts(commands.Cog):
             await ctx.send("This feature is not approved yet.", ephemeral=True)
             return
 
-        ent = await ShortcutEntry.get_unique_by(guild_id=ctx.guild.id, name=cmd_name)
+        ent = await ShortcutEntry.get_unique_by(guild_id=ctx.guild.id, name=f'{setting.prefix}{cmd_name}')
         if not ent:
             await ctx.send("No such shortcut.", ephemeral=True)
+            return
 
         await ent.delete()
         await ctx.send("Removed command successfully.", ephemeral=True)
@@ -176,7 +180,7 @@ class Shortcuts(commands.Cog):
 class ShortcutSetting(db.DatabaseTable):
     """Provides a DB config to track mutes."""
     __tablename__ = 'shortcut_settings'
-    __uniques__ = "guild_id"
+    __uniques__ = ("guild_id",)
 
     @classmethod
     async def initial_create(cls):
