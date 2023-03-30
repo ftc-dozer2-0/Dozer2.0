@@ -17,8 +17,7 @@ class Shortcuts(commands.Cog):
 
     def __init__(self, bot):
         """cog init"""
-        self.guild_table: Dict[int, Dict[str, str]] = {}
-        self.bot = bot
+        pass
 
     """Commands for managing shortcuts/macros."""
 
@@ -28,15 +27,18 @@ class Shortcuts(commands.Cog):
         """
         Display shortcut information
         """
-        settings: ShortcutSetting = await self.settings_cache.query_one(guild_id=ctx.guild.id)
-        if settings is None:
-            raise BadArgument("This server has no shortcut configuration.")
-        if not settings.approved:
+        setting = await ShortcutSetting.get_unique_by(guild_id=ctx.guild.id)
+        if setting is None:
+            await ctx.send("This server has no shortcut configuration.", ephemeral=True)
+            return
+
+        if not setting.approved:
             await ctx.send("This server is not approved for shortcuts.", ephemeral=True)
             return
+
         e = discord.Embed()
         e.title = "Server shortcut configuration"
-        e.add_field(name="Shortcut prefix", value=settings.prefix or "[unset]")
+        e.add_field(name="Shortcut prefix", value=setting.prefix or "[unset]")
         await ctx.send(embed=e, ephemeral=True)
 
     @shortcuts.command()
@@ -58,7 +60,7 @@ class Shortcuts(commands.Cog):
     async def revoke(self, ctx: DozerContext):
         """Revoke the server's ability to use shortcuts"""
         if ctx.author.id not in ctx.bot.config['developers']:
-            raise NotOwner('you are not a developer!')
+            raise NotOwner('You are not a developer!')
 
         setting = await ShortcutSetting.get_unique_by(guild_id=ctx.guild.id)
         if not setting or not setting.approved:
