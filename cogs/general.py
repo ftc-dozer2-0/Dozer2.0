@@ -4,18 +4,20 @@ import inspect
 import discord
 from discord.ext.commands import BadArgument, cooldown, BucketType, Group, has_permissions
 from discord.ext import commands
+
+from context import DozerContext
 from ._utils import *
 from discord import app_commands
-
-blurple = discord.Color.blurple()
 from discord.utils import escape_markdown
 
+blurple = discord.Color.blurple()
 
-class General(Cog):
+
+class General(commands.Cog):
     """General commands common to all Discord bots."""
 
     def __init__(self, bot) -> None:
-        super().__init__(bot)
+        super().__init__()
         self.name = 'Dozer'
         self.bot = bot
 
@@ -25,12 +27,12 @@ class General(Cog):
         self.name = (await self.bot.application_info()).name
 
     @commands.hybrid_command()
-    async def ping(self, ctx):
+    async def ping(self, ctx: DozerContext):
         """Check the bot is online, and calculate its response time."""
         if ctx.guild is None:
             location = 'DMs'
         else:
-            location = 'the **%s** server' % ctx.guild.name
+            location = f'the **{ctx.guild.name}** server'
         response = await ctx.send(f'Pong! We\'re in {location}.', ephemeral = True)
         delay = response.created_at - ctx.message.created_at
         await response.edit(
@@ -44,7 +46,7 @@ class General(Cog):
     @commands.command(name = 'help', aliases = ['about', 'plowie', 'yikes', 'commands', 'command', 'info'])
     @bot_has_permissions(add_reactions = True, embed_links = True,
                          read_message_history = True)  # Message history is for internals of paginate()
-    async def base_help(self, ctx, *target):
+    async def base_help(self, ctx: DozerContext, *target):
         """Show this message."""
         if not target:  # No commands - general help
             await self._help_all(ctx)
@@ -71,7 +73,7 @@ class General(Cog):
     `{prefix}help General` - Help about the General category
     """
 
-    async def _help_all(self, ctx):
+    async def _help_all(self, ctx: DozerContext):
         """Gets the help message for all commands."""
         info = discord.Embed(title = f'{self.name}: Info',
                              description = 'The guild management bot for the FTC server' if self.name == "FTC Server Dozer" else
@@ -97,7 +99,7 @@ class General(Cog):
         info.set_footer(text = f'{self.name} Help | all commands | Info page')
         await self._show_help(ctx, info, f'{self.name}: Commands', '', 'all commands', ctx.bot.commands)
 
-    async def _help_command(self, ctx, command):
+    async def _help_command(self, ctx: DozerContext, command):
         """Gets the help message for one command."""
         if command.aliases:
             fqn = f"{command.full_parent_name}[{'|'.join([command.name] + list(command.aliases))}]"
@@ -124,14 +126,14 @@ class General(Cog):
                               all_subcommands(command), command = command, name = command.qualified_name,
                               signature = command.signature)
 
-    async def _help_cog(self, ctx, cog):
+    async def _help_cog(self, ctx: DozerContext, cog):
         """Gets the help message for one cog."""
         await self._show_help(ctx, None, 'Category: {cog_name}', inspect.cleandoc(cog.__doc__ or ''),
                               '{cog_name!r} category',
                               (command for command in ctx.bot.commands if command.cog is cog),
                               cog_name = type(cog).__name__)
 
-    async def _show_help(self, ctx, start_page, title, description, footer, commands, **format_args):
+    async def _show_help(self, ctx: DozerContext, start_page, title, description, footer, commands, **format_args):
         """Creates and sends a template help message, with arguments filled in."""
         format_args['prefix'] = ctx.prefix
         footer = f'{self.name} Help | {footer} | Page {"{page_num} of {len_pages}"}'
@@ -147,8 +149,11 @@ class General(Cog):
                 for command in page_commands:
                     if command.short_doc:
                         embed_value = command.short_doc
-                    elif command.example_usage:  # Usage provided - show the user the command to see it
-                        embed_value = f'Use `{ctx.prefix}{ctx.invoked_with} {command.qualified_name}` for more information.'
+                    elif hybrid_command := getattr(command, 'hybrid', None):
+                        embed_value = hybrid_command.short_doc
+                    #following lines no like worky with hybrid commands
+                    #elif command.example_usage:  # Usage provided - show the user the command to see it
+                    #    embed_value = f'Use `{ctx.prefix}{ctx.invoked_with} {command.qualified_name}` for more information.'
                     else:
                         embed_value = 'No information provided.'
                     if command.aliases:
@@ -192,7 +197,7 @@ class General(Cog):
     @commands.hybrid_command(name = 'nick', aliases = ['nickname', 'setnick', 'setnickname', 'changename', 'changenick',
                                                        'changenickname'])
     @app_commands.describe(nicktochangeto = 'Your new nickname')
-    async def nick(self, ctx, *, nicktochangeto):
+    async def nick(self, ctx: DozerContext, *, nicktochangeto):
         """Allows a member to change their nickname."""
         if ctx.author.top_role >= ctx.guild.me.top_role:
             await ctx.send(f"{ctx.author.mention}, your top role is the same as or higher than mine!")
@@ -206,7 +211,7 @@ class General(Cog):
     """
 
     @commands.hybrid_command(name = 'invite', aliases = ['botinvite', 'botinviteurl', 'botinvitelink'])
-    async def invite(self, ctx):
+    async def invite(self, ctx: DozerContext):
         """
         Display the bot's invite link.
         The generated link gives all permissions the bot requires. If permissions are removed, some commands will be unusable.
@@ -231,7 +236,7 @@ class General(Cog):
     @app_commands.describe(num = 'The number of invites to create',
                            hours = 'The number of hours the invite should last')
     @commands.hybrid_command(name = 'serverinvite', aliases = ['serverinvitelink', 'serverinviteurl', 'serverinv'])
-    async def invites(self, ctx, num, hours = 24):
+    async def invites(self, ctx: DozerContext, num, hours = 24):
         """
         Generates a set number of single use invites.
         """
@@ -262,7 +267,7 @@ class General(Cog):
     @commands.hybrid_command(aliases = ["setprefix"])
     @commands.guild_only()
     @has_permissions(manage_guild = True)
-    async def configprefix(self, ctx, prefix: str):
+    async def configprefix(self, ctx: DozerContext, prefix: str):
         """Update a servers dynamic prefix"""
         new_prefix = DynamicPrefixEntry(
             guild_id = int(ctx.guild.id),

@@ -1,14 +1,16 @@
 """Provides commands for voice, currently only voice and text channel access bindings."""
 
 import discord
-from discord.app_commands import commands
 from discord.ext.commands import has_permissions
-
+from discord import app_commands
+from discord.ext import commands
 import db
+from context import DozerContext
 from ._utils import *
+from tools import Confirm
 
 
-class Voice(Cog):
+class Voice(commands.Cog):
     """Commands interacting with voice."""
 
     @Cog.listener('on_voice_state_update')
@@ -33,12 +35,18 @@ class Voice(Cog):
     @command()
     @bot_has_permissions(manage_roles=True)
     @has_permissions(manage_roles=True)
-    async def voicebind(self, ctx, voice_channel: discord.VoiceChannel, *, role: discord.Role):
+    @app_commands.describe(voice_channel = "The voice channel to bind to a role", role = "The role to bind to a voice channel")
+    async def voicebind(self, ctx: DozerContext, voice_channel: discord.VoiceChannel, *, role: discord.Role):
 
         """Associates a voice channel with a role, so that users in vc can have an additional channel"""
 
         config = await Voicebinds.get_by(channel_id=voice_channel.id)
         if len(config) != 0:
+            view = Confirm()
+            await ctx.send(f"`{voice_channel}` is already associated with role `{discord.utils.get(ctx.guild.roles, id=config[0].role_id)}`. Do you want to replace the voicebind?", ephemeral = True, view = view)
+            await view.wait()
+            if view.value is False:
+                return
             config[0].guild_id = ctx.guild.id
             config[0].channel_id = voice_channel.id
             config[0].role_id = role.id
@@ -56,7 +64,8 @@ class Voice(Cog):
     @command()
     @bot_has_permissions(manage_roles=True)
     @has_permissions(manage_roles=True)
-    async def voiceunbind(self, ctx, voice_channel: discord.VoiceChannel):
+    @app_commands.describe(voice_channel = "The voice channel to unbind from a role")
+    async def voiceunbind(self, ctx: DozerContext, voice_channel: discord.VoiceChannel):
         """Dissociates a voice channel with a role previously bound with the voicebind command."""
         config = await Voicebinds.get_by(channel_id=voice_channel.id)
         if config is not None:
@@ -81,7 +90,7 @@ class Voice(Cog):
 
     @command()
     @bot_has_permissions(manage_roles=True)
-    async def voicebindlist(self, ctx):
+    async def voicebindlist(self, ctx: DozerContext):
         """Lists all the voice channel to role bindings for the current server"""
         embed = discord.Embed(title="List of voice bindings for \"{}\"".format(ctx.guild),
                               color=discord.Color.blue())
@@ -124,7 +133,6 @@ class Voicebinds(db.DatabaseTable):
 
     @classmethod
     async def get_by(cls, **kwargs):
-        print(super().get_by(**kwargs))
         results = await super().get_by(**kwargs)
         result_list = []
         for result in results:
