@@ -1,9 +1,11 @@
 """Provides commands for voice, currently only voice and text channel access bindings."""
 import discord
+from discord.app_commands import commands
 from discord.ext.commands import has_permissions
 
 import db
 from ._utils import *
+
 
 
 class Voice(Cog):
@@ -44,7 +46,7 @@ class Voice(Cog):
         else:
             await Voicebinds(channel_id = voice_channel.id, role_id = role.id, guild_id = ctx.guild.id).update_or_add()
 
-        await ctx.send(f"Role `{role}` will now be given to users in voice channel `{voice_channel}`!")
+        await ctx.send(f"Role `{role}` will now be given to users in voice channel `{voice_channel}`!", ephemeral=True)
 
     voicebind.example_usage = """
     `{prefix}voicebind "General #1" voice-general-1` - sets up Dozer to give users  `voice-general-1` when they join voice channel 
@@ -55,21 +57,29 @@ class Voice(Cog):
     @bot_has_permissions(manage_roles = True)
     @has_permissions(manage_roles = True)
     async def voiceunbind(self, ctx, voice_channel: discord.VoiceChannel):
-        """Dissasociates a voice channel with a role previously binded with the voicebind command."""
-        config = await Voicebinds.get_by(channel_id = voice_channel.id)
+        """Dissociates a voice channel with a role previously bound with the voicebind command."""
+        config = await Voicebinds.get_by(channel_id=voice_channel.id)
         if config is not None:
-            role = ctx.guild.get_role(config[0].role_id)
-            await Voicebinds.delete(id = config[0].id)
-            await ctx.send(
-                "Role `{role}` will no longer be given to users in voice channel `{voice_channel}`!".format(
-                    role = role, voice_channel = voice_channel))
+            try:
+                role = discord.utils.get(ctx.guild.roles, id=config[0].role_id)
+            except Exception as e:
+                await ctx.send(f"`{voice_channel}` is already not associated with any roles.", ephemeral=True)
+                return
+            if not config:
+                await ctx.send(f"It appears that `{voice_channel}` is not associated with a role!", ephemeral=True)
+            else:
+                await Voicebinds.delete(id=config[0].id)
+                await ctx.send(
+                    f"Role `{role.name}` will no longer be given to users in voice channel `{voice_channel}`!",
+                    ephemeral=True)
         else:
-            await ctx.send("It appears that `{voice_channel}` is not associated with a role!".format(
-                voice_channel = voice_channel))
+            await ctx.send(f"It appears that `{voice_channel}` is not associated with a role!", ephemeral=True)
 
     voiceunbind.example_usage = """
     `{prefix}voiceunbind "General #1"` - Removes automatic role-giving for users in "General #1".
     """
+
+
 
     @command()
     @bot_has_permissions(manage_roles = True)
