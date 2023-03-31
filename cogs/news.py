@@ -9,17 +9,15 @@ import aiohttp
 
 import discord
 from discord.ext import tasks
+from loguru import logger
 from discord import app_commands
 from discord.ext import commands
 from discord.ext.commands import guild_only, has_permissions, BadArgument
 
+#from dozer.context import DozerContext
 from ._utils import *
-from asyncdb.orm import orm
-from asyncdb import psqlt
+import db
 from sources import DataBasedSource, Source, sources
-
-DOZER_LOGGER = logging.getLogger('dozer')
-
 
 def str_or_none(obj):
     """A helper function to make sure str(None) returns None instead of 'None' """
@@ -54,17 +52,17 @@ class News(commands.Cog):
     @tasks.loop()
     async def get_new_posts(self):
         """Attempt to get current subscriptions and post new posts in the respective channels"""
-        DOZER_LOGGER.debug('Getting new news posts.')
+        logger.debug('Getting new news posts.')
         to_delete = [source.short_name for source in self.sources.values() if source.disabled]
         for name in to_delete:
             del self.sources[name]
 
         for source in self.sources.values():
 
-            DOZER_LOGGER.debug(f"Getting source {source.full_name}")
+            logger.debug(f"Getting source {source.full_name}")
             subs = await NewsSubscription.get_by(source=source.short_name)
             if not subs:
-                DOZER_LOGGER.debug(f"Skipping source {source.full_name} due to no subscriptions")
+                logger.debug(f"Skipping source {source.full_name} due to no subscriptions")
                 continue
 
             channel_dict = {}
@@ -81,7 +79,7 @@ class News(commands.Cog):
             for sub in subs:
                 channel = self.bot.get_channel(sub.channel_id)
                 if channel is None:
-                    DOZER_LOGGER.error(f"Channel {sub.channel_id} (sub ID {sub.id}) returned None. Not removing this"
+                    logger.error(f"Channel {sub.channel_id} (sub ID {sub.id}) returned None. Not removing this"
                                        f"in case it's a discord error, but if discord is fine it's recommended to "
                                        f"remove this channel manually.")
                     continue
@@ -98,7 +96,7 @@ class News(commands.Cog):
             try:
                 posts = await source.get_new_posts()
             except ElementTree.ParseError:
-                DOZER_LOGGER.error(f"XML Parser errored out on source f{source.full_name}")
+                logger.error(f"XML Parser errored out on source f{source.full_name}")
                 continue
             if posts is None:
                 continue
@@ -115,14 +113,14 @@ class News(commands.Cog):
                             await channel.send(post)
 
         next_run = self.get_new_posts.next_iteration
-        DOZER_LOGGER.debug(f"Done with getting news. Next run in "
+        logger.debug(f"Done with getting news. Next run in "
                            f"{(next_run - datetime.datetime.now(datetime.timezone.utc)).total_seconds()}"
                            f" seconds.")
 
     @get_new_posts.error
     async def log_exception(self, exception):
         """log an exception in the event loop"""
-        DOZER_LOGGER.error(exception)
+        logger.error(exception)
         self.get_new_posts.start()
 
     @get_new_posts.before_loop
@@ -142,7 +140,7 @@ class News(commands.Cog):
                     await self.sources[source.short_name].first_run()
             except ElementTree.ParseError as err:
                 del self.sources[source.short_name]
-                DOZER_LOGGER.error(f"Parsing error in source {source.short_name}: {err}")
+                logger.error(f"Parsing error in source {source.short_name}: {err}")
 
     @commands.hybrid_group(invoke_without_command=True, case_insensitive=True)
     @guild_only()
@@ -150,7 +148,7 @@ class News(commands.Cog):
         """Show help for news subscriptions"""
         embed = discord.Embed(title="How to subscribe to News Sources",
                               description="Dozer has built in news scrapers to allow you to review up to date news"
-                                          "in specific channels. See below on how to manage your server's "
+                                          " in specific channels. See below on how to manage your server's "
                                           "subscriptions")
         embed.add_field(name="How to add a subscription",
                         value=f"To add a source, for example, Chief Delphi to a channel, you can use the command"
@@ -215,7 +213,7 @@ class News(commands.Cog):
 
             added = await source.add_data(data_obj)
             if not added:
-                DOZER_LOGGER.error(f"Failed to add data {data_obj} to source {source.full_name}")
+                logger.error(f"Failed to add data {data_obj} to source {source.full_name}")
                 await ctx.send("Failed to add new data source. Please contact the Dozer Administrators.")
                 return
 
@@ -275,7 +273,7 @@ class News(commands.Cog):
                                f"{data_obj} found.")
                 return
             elif len(sub) > 1:
-                DOZER_LOGGER.error(f"More that one subscription of {source.full_name} for channel "
+                logger.error(f"More that one subscription of {source.full_name} for channel "
                                    f"{channel.mention} with data {data} found when attempting to delete.")
                 await ctx.send(f"More that one subscription of {source.full_name} for channel {channel.mention} "
                                f"with data {data} found. Please contact the Dozer administrator for help.")
@@ -285,7 +283,7 @@ class News(commands.Cog):
             if len(data_exists) > 1:
                 removed = await source.remove_data(data_obj)
                 if not removed:
-                    DOZER_LOGGER.error(f"Failed to remove data {data_obj} from source {source.full_name}")
+                    logger.error(f"Failed to remove data {data_obj} from source {source.full_name}")
                     await ctx.send("Failed to remove data source. Please contact the Dozer Administrators.")
                     return
 
@@ -300,7 +298,7 @@ class News(commands.Cog):
                 if isinstance(source, DataBasedSource):
                     raise BadArgument("There ware multiple subscriptions found. Try again with a data parameter.")
                 else:
-                    DOZER_LOGGER.error(f"More than one subscription of {source.full_name} for channel "
+                    logger.error(f"More than one subscription of {source.full_name} for channel "
                                        f"{channel.mention} found when attempting to delete.")
                     raise BadArgument(f"More than one subscription of {source.full_name} for channel "
                                       f"{channel.mention} was found. Please contact the Dozer administrators for help.")
@@ -357,7 +355,7 @@ class News(commands.Cog):
         for result in results:
             channel = ctx.bot.get_channel(result.channel_id)
             if channel is None:
-                DOZER_LOGGER.error(f"Channel ID {result.channel_id} for subscription ID {result.id} not found.")
+                logger.error(f"Channel ID {result.channel_id} for subscription ID {result.id} not found.")
                 continue
 
             try:
@@ -428,43 +426,41 @@ async def setup(bot):
     await bot.add_cog(News(bot))
 
 
-class NewsSubscription(orm.Model):
+class NewsSubscription(db.DatabaseTable):
     """Represents a single subscription of one news source to one channel"""
     __tablename__ = 'news_subs'
-    __primary_key__ = ('id',)
+    __uniques__ = ('id',)
 
-    id: psqlt.Column("serial")
-    channel_id: psqlt.Column("bigint NOT NULL")
-    guild_id: psqlt.Column("bigint NOT NULL")
-    source: psqlt.Column("varchar NOT NULL")
-    data: psqlt.Column("varchar")
-    kind: psqlt.Column("varchar NOT NULL")
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            id serial PRIMARY KEY NOT NULL,
+            channel_id bigint NOT NULL,
+            guild_id bigint NOT NULL,
+            source varchar NOT NULL,
+            data varchar,
+            kind varchar NOT NULL
+            )""")
 
-    async def update_or_add(self):
-        """an alias for upsert(),
-        at least in this case."""
-        return await self.upsert()
+    def __init__(self, channel_id: int, guild_id: int, source: str, kind: str, data: str = None, sub_id: int = None):
+        super().__init__()
+        self.id = sub_id
+        self.channel_id = channel_id
+        self.guild_id = guild_id
+        self.source = source
+        self.kind = kind
+        self.data = data
 
     @classmethod
     async def get_by(cls, **kwargs):
-        """an alias for select()"""
-        return await cls.select(**kwargs)
-
-    @classmethod
-    async def delete(cls, **kwargs):
-        # pylint: disable=arguments-differ
-        """an alias for delete_all()"""
-        return await cls.delete_all(**kwargs)
-
-    @property
-    def sub_id(self):
-        """alias for self.id"""
-        return self.id
-
-    async def insert(self, _conn=None, _upsert=None, _fields=None):
-        """we need to redefine this for this class to account for some _serial_ shortcomings in the orm"""
-        fields = [k for k in self._columns.keys() if k != "id"]
-        qs = f"INSERT INTO {self.__schemaname__}.{self.__tablename__}({','.join(fields)}) VALUES(" + ",".join(
-            f"${i}" for i in range(1, len(fields) + 1)) + ") RETURNING id"
-        args = [qs] + [getattr(self, f) for f in fields]
-        return (await self._fetch(args, _one=True, conn=_conn))["id"]
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = NewsSubscription(sub_id=result.get("id"), channel_id=result.get("channel_id"),
+                                   guild_id=result.get("guild_id"), source=result.get("source"),
+                                   kind=result.get("kind"), data=result.get("data"))
+            result_list.append(obj)
+        return result_list
