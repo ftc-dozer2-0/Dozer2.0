@@ -2,11 +2,11 @@
 
 import inspect
 import discord
-import self
 from discord.ext.commands import BadArgument, cooldown, BucketType, Group, has_permissions
 from discord.ext import commands
 from ._utils import *
 from discord import app_commands
+
 blurple = discord.Color.blurple()
 from discord.utils import escape_markdown
 
@@ -70,7 +70,6 @@ class General(Cog):
     `{prefix}help help` - Help about the help command
     `{prefix}help General` - Help about the General category
     """
-
 
     async def _help_all(self, ctx):
         """Gets the help message for all commands."""
