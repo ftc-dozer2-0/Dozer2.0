@@ -92,7 +92,7 @@ class Voicebinds(db.DatabaseTable):
     """DB object to keep track of voice to text channel access bindings."""
     __tablename__ = 'voicebinds'
 
-    __uniques__ = 'id'
+    __uniques__ = ('id',)
 
     @classmethod
     async def initial_create(cls):
@@ -116,6 +116,7 @@ class Voicebinds(db.DatabaseTable):
 
     @classmethod
     async def get_by(cls, **kwargs):
+        print(super().get_by(**kwargs))
         results = await super().get_by(**kwargs)
         result_list = []
         for result in results:
@@ -130,7 +131,7 @@ class Voicebinds(db.DatabaseTable):
 class AutoPTT(db.DatabaseTable):
     """DB object to keep track of voice to text channel access bindings."""
     __tablename__ = 'autoptt'
-    __uniques__ = 'channel_id'
+    __uniques__ = ('id',)
 
     @classmethod
     async def initial_create(cls):
