@@ -665,6 +665,7 @@ class Moderation(Cog):
                      icon_url=ctx.author.display_avatar.replace(format='png', size=32))
         msg = await ctx.send(embed=e)
 
+
         await asyncio.sleep(duration)
 
         for target, overwrite in to_restore:
@@ -675,6 +676,7 @@ class Moderation(Cog):
 
         e.description = 'The timeout has ended.'
         await msg.edit(embed=e)
+
 
     timeout.example_usage = """
            `{prefix}timeout 60` - prevents sending messages in this channel for 1 minute (60s)
