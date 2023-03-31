@@ -1,19 +1,17 @@
 """Role management commands."""
 
 import typing
-import logging
 import discord
 import discord.utils
 from discord.ext.commands import cooldown, BucketType, has_permissions, BadArgument, MissingPermissions, guild_only
 from discord import app_commands
 from discord.ext import commands
 
+import db
 from ._utils import *
-from asyncdb.orm import orm
-from asyncdb import psqlt
+from loguru import logger
 
 blurple = discord.Color.blurple()
-dozer_logger = logging.getLogger('dozer')
 
 
 class Roles(commands.Cog):
@@ -80,7 +78,7 @@ class Roles(commands.Cog):
         """Called whenever a reaction is added or removed"""
         message_id = payload.message_id
         reaction = str(payload.emoji)
-        reaction_roles = await ReactionRole.select(message_id = message_id, reaction = reaction)
+        reaction_roles = await ReactionRole.get_by(message_id = message_id, reaction = reaction)
         if len(reaction_roles):
             guild = self.bot.get_guild(payload.guild_id)
             member = guild.get_member(payload.user_id)
@@ -94,7 +92,7 @@ class Roles(commands.Cog):
                     elif payload.event_type == "REACTION_REMOVE":
                         await member.remove_roles(role, reason = "Automatic Reaction Role")
                 except discord.Forbidden:
-                    dozer_logger.debug(f"Unable to add reaction role in guild {guild} due to missing permissions")
+                    logger.debug(f"Unable to add reaction role in guild {guild} due to missing permissions")
 
     @Cog.listener('on_member_join')
     async def on_member_join(self, member):
@@ -105,7 +103,7 @@ class Roles(commands.Cog):
         me = member.guild.me
         top_restorable = me.top_role.position if me.guild_permissions.manage_roles else 0
 
-        missing_roles = await MissingRole.select(guild_id = member.guild.id, member_id = member.id)
+        missing_roles = await MissingRole.get_by(guild_id = member.guild.id, member_id = member.id)
         # no missing rules to return
         if not missing_roles:
             return
@@ -158,8 +156,7 @@ class Roles(commands.Cog):
                              guild_id)
             for role in member.roles[1:]:  # Exclude the @everyone role
                 await MissingRole(role_id = role.id, role_name = role.name,
-                                  member_id = member_id, guild_id = guild_id).insert(_upsert = "ON CONFLICT DO NOTHING",
-                                                                                     _conn = conn)
+                                  member_id = member_id, guild_id = guild_id).update_or_add()
 
     async def giveme_purge(self, role_id_list):
         """Purges roles in the giveme database that no longer exist"""
@@ -569,47 +566,196 @@ class Roles(commands.Cog):
     """
 
 
-class RoleMenu(orm.Model):
+class RoleMenu(db.DatabaseTable):
     """Contains a role menu, used for editing and initial create"""
     __tablename__ = 'role_menus'
-    __primary_key__ = ('message_id',)
+    __uniques__ = 'message_id'
 
-    guild_id: psqlt.bigint
-    channel_id: psqlt.bigint
-    message_id: psqlt.bigint
-    name: psqlt.text
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint NOT NULL,
+            channel_id bigint NOT NULL,
+            message_id bigint NOT NULL,
+            name text NOT NULL,
+            PRIMARY KEY (message_id)
+            )""")
+
+    def __init__(self, guild_id: int, channel_id: int, message_id: int, name: str):
+        super().__init__()
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.message_id = message_id
+        self.name = name
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = RoleMenu(guild_id=result.get("guild_id"), channel_id=result.get("channel_id"),
+                           message_id=result.get("message_id"), name=result.get("name"))
+            result_list.append(obj)
+        return result_list
 
 
-class ReactionRole(orm.Model):
+class ReactionRole(db.DatabaseTable):
     """Contains a role menu entry"""
     __tablename__ = 'reaction_roles'
-    __primary_key__ = ('message_id', 'role_id')
+    __uniques__ = 'message_id, role_id'
 
-    guild_id: psqlt.bigint
-    channel_id: psqlt.bigint
-    message_id: psqlt.bigint
-    role_id: psqlt.bigint
-    reaction: psqlt.varchar(100)
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint NOT NUll,
+            channel_id bigint NOT NULL,
+            message_id bigint NOT NULL,
+            role_id bigint NOT NULL,
+            reaction varchar NOT NULL,
+            PRIMARY KEY (message_id, role_id)
+            )""")
+
+    def __init__(self, guild_id: int, channel_id: int, message_id: int, role_id: int, reaction: str):
+        super().__init__()
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.message_id = message_id
+        self.role_id = role_id
+        self.reaction = reaction
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = ReactionRole(guild_id=result.get("guild_id"), channel_id=result.get("channel_id"),
+                               message_id=result.get("message_id"),
+                               role_id=result.get("role_id"), reaction=result.get("reaction"))
+            result_list.append(obj)
+        return result_list
 
 
-class GiveableRole(orm.Model):
+class GiveableRole(db.DatabaseTable):
     """Database object for maintaining a list of giveable roles."""
     __tablename__ = 'giveable_roles'
-    __primary_key__ = ("role_id",)
+    __uniques__ = 'role_id'
 
-    role_id: psqlt.bigint
-    guild_id: psqlt.bigint
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint NOT NULL,
+            role_id bigint PRIMARY KEY NOT NULL,
+            name varchar NOT NULL,
+            norm_name varchar NOT NULL
+            )""")
+
+    def __init__(self, guild_id: int, role_id: int, norm_name: str, name: str):
+        super().__init__()
+        self.guild_id = guild_id
+        self.role_id = role_id
+        self.name = name
+        self.norm_name = norm_name
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = GiveableRole(guild_id=result.get("guild_id"), role_id=result.get("role_id"),
+                               name=result.get("name"), norm_name=result.get("norm_name"))
+            result_list.append(obj)
+        return result_list
+
+    @classmethod
+    def from_role(cls, role: discord.Role):
+        """Creates a GiveableRole record from a discord.Role."""
+        return cls(role_id=role.id, name=role.name, norm_name=Roles.normalize(role.name), guild_id=role.guild.id)
 
 
-class MissingRole(orm.Model):
-    """Holds what roles a given member had when they last left the guild."""
+class MissingRole(db.DatabaseTable):
+    """Holds the roles of those who leave"""
     __tablename__ = 'missing_roles'
-    __primary_key__ = ('role_id', 'member_id')
+    __uniques__ = 'role_id, member_id'
 
-    role_id: psqlt.bigint
-    guild_id: psqlt.bigint
-    member_id: psqlt.bigint
-    role_name: psqlt.varchar(100)
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint NOT NULL,
+            member_id bigint NOT NULL,
+            role_id bigint NOT NULL,
+            role_name varchar NOT NULL,
+            PRIMARY KEY (role_id, member_id)
+            )""")
+
+    def __init__(self, guild_id: int, member_id: int, role_id: int, role_name: str):
+        super().__init__()
+        self.guild_id = guild_id
+        self.member_id = member_id
+        self.role_id = role_id
+        self.role_name = role_name
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = MissingRole(guild_id=result.get("guild_id"), role_id=result.get("role_id"),
+                              member_id=result.get("member_id"), role_name=result.get("role_name"))
+            result_list.append(obj)
+        return result_list
+
+
+class TempRoleTimerRecords(db.DatabaseTable):
+    """TempRole Timer Records"""
+
+    __tablename__ = 'temp_role_timers'
+    __uniques__ = 'id'
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            id serial PRIMARY KEY NOT NULL,
+            guild_id bigint NOT NULL,
+            target_id bigint NOT NULL,
+            target_role_id bigint NOT NULL,
+            removal_ts bigint NOT NULL
+            )""")
+
+    def __init__(self, guild_id: int, target_id: int, target_role_id: int, removal_ts: int, input_id: int = None):
+        super().__init__()
+        self.id = input_id
+        self.guild_id = guild_id
+        self.target_id = target_id
+        self.target_role_id = target_role_id
+        self.removal_ts = removal_ts
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = TempRoleTimerRecords(guild_id=result.get("guild_id"),
+                                       target_id=result.get("target_id"),
+                                       target_role_id=result.get("target_role_id"),
+                                       removal_ts = result.get("removal_ts"),
+                                       input_id = result.get('id'))
+            result_list.append(obj)
+        return result_list
 
 
 async def setup(bot):
