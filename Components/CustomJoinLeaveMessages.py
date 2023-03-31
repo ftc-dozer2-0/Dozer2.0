@@ -38,7 +38,7 @@ def format_join_leave(template: str, member: discord.Member):
 class CustomJoinLeaveMessages(db.DatabaseTable):
     """Holds custom join leave messages"""
     __tablename__ = 'memberlogconfig'
-    __uniques__ = 'guild_id'
+    __uniques__ = ('guild_id',)
 
     @classmethod
     async def initial_create(cls):
@@ -94,4 +94,4 @@ class CustomJoinLeaveMessages(db.DatabaseTable):
             await conn.execute(f"alter table {self.__tablename__} "
                                f"add if not exists send_on_verify boolean default null;")
 
-    __versions__ = [version_1, version_2]
+    __versions__ = (version_1, version_2)
