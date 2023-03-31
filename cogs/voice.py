@@ -1,11 +1,11 @@
 """Provides commands for voice, currently only voice and text channel access bindings."""
+
 import discord
 from discord.app_commands import commands
 from discord.ext.commands import has_permissions
 
 import db
 from ._utils import *
-
 
 
 class Voice(Cog):
@@ -20,31 +20,31 @@ class Voice(Cog):
             # before and after are voice states
             if before.channel is not None:
                 # leave event, take role
-                config = await Voicebinds.get_by(channel_id = before.channel.id)
+                config = await Voicebinds.get_by(channel_id=before.channel.id)
                 if config is not None:
                     await member.remove_roles(member.guild.get_role(config[0].role_id))
 
             if after.channel is not None:
                 # join event, give role
-                config = await Voicebinds.get_by(channel_id = after.channel.id)
+                config = await Voicebinds.get_by(channel_id=after.channel.id)
                 if config is not None:
                     await member.add_roles(member.guild.get_role(config[0].role_id))
 
     @command()
-    @bot_has_permissions(manage_roles = True)
-    @has_permissions(manage_roles = True)
+    @bot_has_permissions(manage_roles=True)
+    @has_permissions(manage_roles=True)
     async def voicebind(self, ctx, voice_channel: discord.VoiceChannel, *, role: discord.Role):
 
         """Associates a voice channel with a role, so that users in vc can have an additional channel"""
 
-        config = await Voicebinds.get_by(channel_id = voice_channel.id)
+        config = await Voicebinds.get_by(channel_id=voice_channel.id)
         if len(config) != 0:
             config[0].guild_id = ctx.guild.id
             config[0].channel_id = voice_channel.id
             config[0].role_id = role.id
             await config[0].update_or_add()
         else:
-            await Voicebinds(channel_id = voice_channel.id, role_id = role.id, guild_id = ctx.guild.id).update_or_add()
+            await Voicebinds(channel_id=voice_channel.id, role_id=role.id, guild_id=ctx.guild.id).update_or_add()
 
         await ctx.send(f"Role `{role}` will now be given to users in voice channel `{voice_channel}`!", ephemeral=True)
 
@@ -54,8 +54,8 @@ class Voice(Cog):
     """
 
     @command()
-    @bot_has_permissions(manage_roles = True)
-    @has_permissions(manage_roles = True)
+    @bot_has_permissions(manage_roles=True)
+    @has_permissions(manage_roles=True)
     async def voiceunbind(self, ctx, voice_channel: discord.VoiceChannel):
         """Dissociates a voice channel with a role previously bound with the voicebind command."""
         config = await Voicebinds.get_by(channel_id=voice_channel.id)
@@ -80,20 +80,21 @@ class Voice(Cog):
     """
 
     @command()
-    @bot_has_permissions(manage_roles = True)
+    @bot_has_permissions(manage_roles=True)
     async def voicebindlist(self, ctx):
         """Lists all the voice channel to role bindings for the current server"""
-        embed = discord.Embed(title = "List of voice bindings for \"{}\"".format(ctx.guild),
-                              color = discord.Color.blue())
-        for config in await Voicebinds.get_by(guild_id = ctx.guild.id):
-            channel = discord.utils.get(ctx.guild.voice_channels, id = config.channel_id)
+        embed = discord.Embed(title="List of voice bindings for \"{}\"".format(ctx.guild),
+                              color=discord.Color.blue())
+        for config in await Voicebinds.get_by(guild_id=ctx.guild.id):
+            channel = discord.utils.get(ctx.guild.voice_channels, id=config.channel_id)
             role = ctx.guild.get_role(config.role_id)
-            embed.add_field(name = channel, value = f"`{role}`")
-        await ctx.send(embed = embed)
+            embed.add_field(name=channel, value=f"`{role}`")
+        await ctx.send(embed=embed)
 
     voicebindlist.example_usage = """
     `{prefix}voicebindlist` - Lists all the voice channel to role bindings for the current server bound with the voicebind command.
     """
+
 
 class Voicebinds(db.DatabaseTable):
     """DB object to keep track of voice to text channel access bindings."""
@@ -127,10 +128,10 @@ class Voicebinds(db.DatabaseTable):
         results = await super().get_by(**kwargs)
         result_list = []
         for result in results:
-            obj = Voicebinds(row_id = result.get("id"),
-                             guild_id = result.get("guild_id"),
-                             channel_id = result.get("channel_id"),
-                             role_id = result.get("role_id"))
+            obj = Voicebinds(row_id=result.get("id"),
+                             guild_id=result.get("guild_id"),
+                             channel_id=result.get("channel_id"),
+                             role_id=result.get("role_id"))
             result_list.append(obj)
         return result_list
 
@@ -161,8 +162,8 @@ class AutoPTT(db.DatabaseTable):
         result_list = []
         for result in results:
             obj = AutoPTT(
-                channel_id = result.get("channel_id"),
-                ptt_limit = result.get("ptt_limit"))
+                channel_id=result.get("channel_id"),
+                ptt_limit=result.get("ptt_limit"))
             result_list.append(obj)
         return result_list
 
