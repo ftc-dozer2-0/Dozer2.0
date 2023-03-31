@@ -4,8 +4,8 @@ import datetime
 import discord
 import async_timeout
 from discord.ext import commands
-import aiotoa.models
-from aiotoa import *
+#import aiotoa.models
+#from aiotoa import *
 from cogs._utils import *
 from discord import app_commands
 
@@ -239,4 +239,4 @@ and locations of teams who may have moved around or renamed over the years. """.
 
 async def setup(bot):
     """Adds the TOA cog to the bot."""
-    await bot.add_cog(TOA(bot))
+  #  await bot.add_cog(TOA(bot))

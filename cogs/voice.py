@@ -2,10 +2,14 @@
 import discord
 from discord.ext.commands import has_permissions
 
-from ._utils import *
 from asyncdb.orm import orm
 from asyncdb import psqlt
+import db
 
+from discord.utils import escape_markdown
+
+from context import DozerContext
+from ._utils import *
 
 class Voice(Cog):
     """Commands interacting with voice."""
@@ -30,28 +34,29 @@ class Voice(Cog):
                     await member.add_roles(member.guild.get_role(config.role_id))
 
     @command()
-    @bot_has_permissions(manage_roles = True)
-    @has_permissions(manage_roles = True)
+    @bot_has_permissions(manage_roles=True)
+    @has_permissions(manage_roles=True)
     async def voicebind(self, ctx, voice_channel: discord.VoiceChannel, *, role: discord.Role):
+
         """Associates a voice channel with a role, so that users in vc can have an additional channel"""
 
-        config = await Voicebinds.select_one(channel_id = voice_channel.id)
-        if config is not None:
+        config_list = await Voicebinds.get_by(channel_id=voice_channel.id)
+        if len(config_list) > 0:
+            config = config_list[0]
             config.guild_id = ctx.guild.id
             config.role_id = role.id
             await config.update()
         else:
-            config = Voicebinds(channel_id = voice_channel.id, role_id = role.id, guild_id = ctx.guild.id)
+            config = Voicebinds(guild_id=ctx.guild.id, channel_id=voice_channel.id, role_id=role.id)
             await config.insert()
 
-        await ctx.send(
-            "Role `{role}` will now be given to users in voice channel `{voice_channel}`!".format(role = role,
-                                                                                                  voice_channel = voice_channel))
+        await ctx.send(f"Role `{role}` will now be given to users in voice channel `{voice_channel}`!")
 
     voicebind.example_usage = """
     `{prefix}voicebind "General #1" voice-general-1` - sets up Dozer to give users  `voice-general-1` when they join voice channel 
     "General #1", which will be removed when they leave.
     """
+
 
     @command()
     @bot_has_permissions(manage_roles = True)
@@ -90,18 +95,99 @@ class Voice(Cog):
     """
 
 
-class Voicebinds(orm.Model):
+class Voicebinds(db.DatabaseTable):
     """DB object to keep track of voice to text channel access bindings."""
     __tablename__ = 'voicebinds'
-    __primary_key__ = ('channel_id',)
 
-    guild_id: psqlt.bigint
-    channel_id: psqlt.bigint
-    role_id: psqlt.bigint
+    __uniques__ = 'id'
 
 
-# ALTER TABLE voicebinds DROP CONSTRAINT voicebinds_pkey;
-# ALTER TABLE voicebinds ADD PRIMARY KEY (channel_id);
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            id SERIAL PRIMARY KEY NOT NULL,
+            guild_id bigint NOT NULL,
+            channel_id bigint null,
+            role_id bigint null
+            )""")
+
+    def __init__(self, guild_id: int, channel_id: int, role_id: int, row_id: int = None):
+        super().__init__()
+        if row_id is not None:
+            self.id = row_id
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.role_id = role_id
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = Voicebinds(row_id=result.get("id"),
+                             guild_id=result.get("guild_id"),
+                             channel_id=result.get("channel_id"),
+                             role_id=result.get("role_id"))
+            result_list.append(obj)
+        return result_list
+
+    @classmethod
+    async def insert(self):
+        query = f"""
+            INSERT INTO {self.__tablename__} (guild_id, channel_id, role_id)
+            VALUES ($1, $2, $3)
+            RETURNING id
+        """
+        async with db.Pool.acquire() as conn:
+            result = await conn.fetchrow(query, self.guild_id, self.channel_id, self.role_id)
+            self.id = result['id']
+
+
+class AutoPTT(db.DatabaseTable):
+    """DB object to keep track of voice to text channel access bindings."""
+    __tablename__ = 'autoptt'
+    __uniques__ = 'channel_id'
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            channel_id bigint PRIMARY KEY NOT NULL,
+            ptt_limit bigint null
+            )""")
+
+    def __init__(self, channel_id: int, ptt_limit: int):
+        super().__init__()
+        self.channel_id = channel_id
+        self.ptt_limit = ptt_limit
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = AutoPTT(
+                channel_id=result.get("channel_id"),
+                ptt_limit=result.get("ptt_limit"))
+            result_list.append(obj)
+        return result_list
+
+    async def version_1(self):
+        """DB migration v1"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            ALTER TABLE {self.__tablename__} ADD self_inflicted bool NOT NULL DEFAULT false;
+            """)
+
+    __versions__ = (version_1,)
+
+
+
 
 async def setup(bot):
     """Add this cog to the main bot."""
