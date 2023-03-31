@@ -79,8 +79,6 @@ class Voice(Cog):
     `{prefix}voiceunbind "General #1"` - Removes automatic role-giving for users in "General #1".
     """
 
-
-
     @command()
     @bot_has_permissions(manage_roles = True)
     async def voicebindlist(self, ctx):
@@ -96,7 +94,6 @@ class Voice(Cog):
     voicebindlist.example_usage = """
     `{prefix}voicebindlist` - Lists all the voice channel to role bindings for the current server bound with the voicebind command.
     """
-
 
 class Voicebinds(db.DatabaseTable):
     """DB object to keep track of voice to text channel access bindings."""
