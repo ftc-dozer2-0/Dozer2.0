@@ -1,7 +1,7 @@
 """Commands specific to development. Only approved developers can use these commands."""
 import copy
 import re
-import logging
+from loguru import logger
 import discord
 
 from discord.ext import commands
@@ -11,9 +11,9 @@ from discord.ext.commands import NotOwner
 import os
 
 from ._utils import *
-from asyncdb.orm import orm
+from context import DozerContext
 
-logger = logging.getLogger("dozer")
+logger = logger.opt(colors = True)
 MY_GUILD = discord.Object(id = 1088700196675919872)  # temp testing server, will switch to ftc discord id later
 
 
@@ -68,7 +68,6 @@ class Development(commands.Cog):
     for module in ('asyncio', 'collections', 'discord', 'inspect', 'itertools'):
         eval_globals[module] = __import__(module)
     eval_globals['__builtins__'] = __import__('builtins')
-    eval_globals['orm'] = orm
 
     def cog_check(self, ctx):  # All of this cog is only available to devs
         if ctx.author.id not in ctx.bot.config['developers']:
@@ -147,7 +146,7 @@ class Development(commands.Cog):
 
     @commands.hybrid_command(name = 'su', pass_context = True)
     @app_commands.describe(user = "User to impersonate", command = "Command to run")
-    async def pseudo(self, ctx, user: discord.Member, *, command):
+    async def pseudo(self, ctx: DozerContext, user: discord.Member, *, command):
         """Execute a command as another user."""
         msg = copy.copy(ctx.message)
         msg.author = user
@@ -161,7 +160,7 @@ class Development(commands.Cog):
     """
 
     @commands.hybrid_command()
-    async def listservers(self, ctx):
+    async def listservers(self, ctx: DozerContext):
         """Lists the servers that the bot is in. Only accessible to developers."""
         embed = discord.Embed(title = "List of servers:", color = discord.Color.blue())
         embed.add_field(name = "Servers:", value = "\n".join([f"{guild.name} ({guild.id})" for guild in self.bot.guilds]))

@@ -4,6 +4,7 @@ from ._utils import *
 import discord
 from discord.ext import commands
 from discord import app_commands
+from loguru import logger
 
 # as the name implies, this cog is hilariously hacky code.
 # it's very ftc server specific code, made specifically for its own needs.
@@ -29,7 +30,7 @@ class Hacks(Cog):
                 await member.send(
                     """Welcome to the FTC Discord! Please read through #server-rules-info for information on how to access the rest of the server!""")
             except discord.Forbidden:
-                self.bot.logger.info(f"@{member} has blocked me?")
+                logger.info(f"@{member} has blocked me?")
         else:
             return
         logs = self.bot.get_channel(JOINED_LOGS_ID)
