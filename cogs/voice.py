@@ -43,7 +43,8 @@ class Voice(commands.Cog):
         config = await Voicebinds.get_by(channel_id=voice_channel.id)
         if len(config) != 0:
             view = Confirm()
-            await ctx.send(f"`{voice_channel}` is already associated with role `{discord.utils.get(ctx.guild.roles, id=config[0].role_id)}`. Do you want to replace the voicebind?", ephemeral = True, view = view)
+            await ctx.send(f"""`{voice_channel}` is already associated with role `{discord.utils.get(ctx.guild.roles, 
+                id=config[0].role_id)}`. Do you want to replace the voicebind?""", ephemeral = True, view = view)
             await view.wait()
             if view.value is False:
                 return
