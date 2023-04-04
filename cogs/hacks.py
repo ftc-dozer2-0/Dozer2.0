@@ -73,6 +73,8 @@ class Hacks(Cog):
         if message.guild.id == 884664360486703125:
             if message.author.id in DOOC_MODS:
                 await message.add_reaction("<:modaboos:927346308551954443>")
+            if message.author.id == 787125089434730537:
+                await message.add_reaction("👶")
 
     @Cog.listener()
     async def on_message_edit(self, before, after):
@@ -143,7 +145,7 @@ class Hacks(Cog):
             for number in numbers[:options]:
                 await ctx.message.add_reaction(number)
 
-    @cooldown(1, 15, BucketType.user)
+    @cooldown(1, 150, BucketType.user)
     @bot_has_permissions(embed_links=True)
     @commands.hybrid_command(name="sleep", aliases=["💀", "bed", "🛏️", "goSleep", "goToBed", "goToSleep"])
     @app_commands.describe(member="The member to send the sleep message to")
