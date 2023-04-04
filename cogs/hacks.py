@@ -75,6 +75,9 @@ class Hacks(Cog):
                 await message.add_reaction("<:modaboos:927346308551954443>")
             if message.author.id == 787125089434730537:
                 await message.add_reaction("👶")
+            if message.content.lower().contains("I'm"):
+                person = message.content.split("I'm")[1]
+                await message.reply(f"Hi {person}, I'm Dozer!")
 
     @Cog.listener()
     async def on_message_edit(self, before, after):
