@@ -75,8 +75,11 @@ class Hacks(Cog):
                 await message.add_reaction("<:modaboos:927346308551954443>")
             if message.author.id == 787125089434730537:
                 await message.add_reaction("👶")
-            if message.content.lower().contains("I'm"):
-                person = message.content.split("I'm")[1]
+            if "i'm" in message.content.lower():
+                if message.author.bot:
+                    return
+                text = message.content.lower()
+                person = text.split("i'm ")[1]
                 await message.reply(f"Hi {person}, I'm Dozer!")
 
     @Cog.listener()
