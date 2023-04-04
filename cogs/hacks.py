@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from loguru import logger
+from context import DozerContext
 
 # as the name implies, this cog is hilariously hacky code.
 # it's very ftc server specific code, made specifically for its own needs.
@@ -19,7 +20,8 @@ VOTE_CHANNEL_IDS = [674081079761829898, 674026943691358229]
 MEDIA_CHANNEL_ID = 676583549561995274
 # feeds, media, robot-showcase
 PUBLIC_CHANNEL_IDS = [320719178132881408, 676583549561995274, 771188718198456321]
-
+DOOC_DISCORD_ID = 884664360486703125
+DOOC_MODS = [748927855219703959, 538729840698982409, 761385417068642305]
 
 class Hacks(Cog):
 
@@ -66,6 +68,10 @@ class Hacks(Cog):
         if message.channel.id in VOTE_CHANNEL_IDS:
             await message.add_reaction('👍')
             await message.add_reaction('👎')
+
+        if message.guild.id in DOOC_DISCORD_ID:
+            if message.author.id in DOOC_MODS:
+                await message.add_reaction("<:modaboos:927346308551954443>")
 
     @Cog.listener()
     async def on_message_edit(self, before, after):
@@ -123,12 +129,19 @@ class Hacks(Cog):
     @has_permissions(add_reactions = True)
     @bot_has_permissions(add_reactions = True)
     @commands.command()
-    async def vote(self, ctx):
-        await ctx.message.add_reaction('👍')
-        await ctx.message.add_reaction('👎')
-        await ctx.message.add_reaction('💀')
+    async def vote(self, ctx: DozerContext, options: int = None):
+        if options is not None:
+            options = int(options)
+        if options == 2 or options is None or not isinstance(options, int):
+            await ctx.message.add_reaction('👍')
+            await ctx.message.add_reaction('👎')
+            await ctx.message.add_reaction('💀')
+        else:
+            numbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+            for number in numbers[:options]:
+                await ctx.message.add_reaction(number)
 
-    @cooldown(1, 60, BucketType.user)
+    @cooldown(1, 15, BucketType.user)
     @bot_has_permissions(embed_links = True)
     @commands.hybrid_command(name = "sleep", aliases = ["💀", "bed", "🛏️", "goSleep", "goToBed", "goToSleep"])
     @app_commands.describe(member = "The member to send the sleep message to")
