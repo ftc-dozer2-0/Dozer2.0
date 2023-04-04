@@ -8,8 +8,9 @@ import discord
 import sentry_sdk
 from loguru import logger
 
-if sys.version_info < (3, 8):
-    sys.exit('Dozer requires Python 3.8 or higher to run. This is version ' + '.'.join(sys.version_info[:3]) + '.')
+if sys.version_info < (3, 11):
+    sys.exit('Due to certain features only found in Python 3.11 and up, Dozer requires Python 3.11 or higher to run. '
+             'This is version ' + '.'.join(sys.version_info[:3]) + '.')
 
 config = {
     'prefix': '&', 'developers': [],
