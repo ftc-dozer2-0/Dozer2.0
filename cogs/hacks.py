@@ -25,6 +25,11 @@ DOOC_MODS = [748927855219703959, 538729840698982409, 761385417068642305]
 
 
 class Hacks(Cog):
+    def is_dev():
+        def predicate(ctx):
+            return ctx.message.author.id in ctx.bot.config['developers']
+
+        return commands.check(predicate)
 
     @Cog.listener()
     async def on_member_join(self, member):
@@ -162,6 +167,10 @@ class Hacks(Cog):
         if member:  # updated number of E's to send
             await member.send("🛌 **GO TO SLEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEP** 🛌")
 
+    @commands.hybrid_command()
+    @is_dev()
+    async def echo(self, ctx: DozerContext, *, message: str):
+        await ctx.send(message)
 
 async def setup(bot):
     await bot.add_cog(Hacks(bot))
