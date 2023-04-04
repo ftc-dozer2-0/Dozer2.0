@@ -5,6 +5,7 @@ from discord.ext import commands
 import discord
 import re
 from discord.ext.commands import BadArgument, guild_only
+from discord.utils import escape_markdown
 
 import db
 from context import DozerContext
@@ -47,17 +48,13 @@ class Teams(Cog):
     @commands.hybrid_command()
     @guild_only()
     @app_commands.describe(team_type = "ftc, frc, fll, vex, vexu, vrc", team_number = "Team number")
-    async def setteam(self, ctx: DozerContext, team_type: str, team_number: str):
+    async def setteam(self, ctx: DozerContext, team_type: str, team_number: int):
         """Sets an association with your team in the database."""
-        team_type, team_number = self.validate(team_type, team_number)
-
-        dbcheck = await TeamNumbers.get_by(user_id = ctx.author.id, team_number = team_number,
-                                           team_type = team_type)
-        if dbcheck is None:
-            dbtransaction = TeamNumbers(user_id = ctx.author.id, team_number = team_number, team_type = team_type)
-            await dbtransaction.update_or_add()
-            await ctx.send("Team number set! Note that unlike FRC Dozer, this will not affect your nickname "
-                           "when joining other servers.", ephemeral = True)
+        team_type = team_type.casefold()
+        dbcheck = await TeamNumbers.get_by(user_id=ctx.author.id, team_type=team_type, team_number=team_number)
+        if not dbcheck:
+            await TeamNumbers(user_id=ctx.author.id, team_number=team_number, team_type=team_type).update_or_add()
+            await ctx.send("Team number set!")
         else:
             raise BadArgument("You are already associated with that team!")
 
@@ -68,14 +65,14 @@ class Teams(Cog):
     @commands.hybrid_command()
     @guild_only()
     @app_commands.describe(team_type = "ftc, frc, fll, vex, vexu, vrc", team_number = "Team number")
-    async def removeteam(self, ctx: DozerContext, team_type: str, team_number: str):
+    async def removeteam(self, ctx: DozerContext, team_type: str, team_number: int):
         """Removes an association with a team in the database."""
-        team_type, team_number = self.validate(team_type, team_number)
-        results = await TeamNumbers.get_by(user_id = ctx.author.id, team_number = team_number, team_type = team_type)
-        if results is not None:
-            await TeamNumbers.delete(user_id = ctx.author.id, team_number = team_number, team_type = team_type)
-            await ctx.send(f"Removed association with {team_type} team {team_number}", ephemeral = True)
-        if results is None:
+        team_type = team_type.casefold()
+        results = await TeamNumbers.get_by(user_id=ctx.author.id, team_type=team_type, team_number=team_number)
+        if len(results) != 0:
+            await TeamNumbers.delete(user_id=ctx.author.id, team_number=team_number, team_type=team_type)
+            await ctx.send(f"Removed association with {team_type} team {team_number}")
+        else:
             await ctx.send("Couldn't find any associations with that team!")
 
     removeteam.example_usage = """
@@ -110,39 +107,28 @@ class Teams(Cog):
     @commands.hybrid_group(invoke_without_command = True)
     @guild_only()
     @app_commands.describe(team_type = "ftc, frc, or fll", team_number = "Team number")
-    async def onteam(self, ctx, team_type, team_number):
+    async def onteam(self, ctx: DozerContext, team_type: str, team_number: int):
         """Allows you to see who has associated themselves with a particular team."""
-        team_type, team_number = self.validate(team_type, team_number)
-        users = await TeamNumbers.get_by(team_number = team_number, team_type = team_type)
-
-        user_ids = [user.user_id for user in users]
-
-        # do not do it for one/two digit team numbers because it pollutes the output
-        if len(str(team_number)) > 2:
-            team_number_regex = re.compile(f".*(\D|^){team_number}(\D|$)")
-            user_ids.extend([member.id for member in ctx.guild.members
-                             if member.nick != None and team_number_regex.match(member.nick)])
-
-        if not user_ids:
+        team_type = team_type.casefold()
+        users = await TeamNumbers.get_by(team_type=team_type, team_number=team_number)
+        if len(users) == 0:
             await ctx.send("Nobody on that team found!")
         else:
-            e = discord.Embed(type = 'rich')
-            e.title = 'Users on team {}'.format(team_number)
-            segments = ["Users: \n"]
-
-            for i in set(user_ids):
-                user = ctx.guild.get_member(i)
+            e = discord.Embed(type='rich')
+            e.title = f'Users on team {team_number}'
+            e.description = "Users: \n"
+            extra_mems = ""
+            for i in users:
+                user = ctx.guild.get_member(i.user_id)
                 if user is not None:
-                    line = f"{user.display_name} {user.mention}\n"
-                    if len(segments[-1]) + len(line) >= 1024:
-                        segments.append(line)
+                    memstr = f"{escape_markdown(user.display_name)} {user.mention} \n"
+                    if len(e.description + memstr) > 2047:
+                        extra_mems += memstr
                     else:
-                        segments[-1] += line
-                    # e.description = "{}{} {} \n".format(e.description, user.display_name, user.mention)
-            e.description = segments[0]
-            for i, seg in enumerate(segments[1:], 1):
-                e.add_field(name = ("more " * i).capitalize() + "users", value = seg)
-            await ctx.send(embed = e)
+                        e.description = e.description + memstr
+            if len(extra_mems) != 0:
+                e.add_field(name=f"Users on team {team_number}", value=extra_mems)
+            await ctx.send(embed=e)
 
     onteam.example_usage = """
     `{prefix}onteam type team_number` - Returns a list of users associated with a given team type and number
@@ -158,11 +144,7 @@ class Teams(Cog):
         embed.description = '\n'.join(
             f'{type_.upper()} team {num} ({count} member{"s" if count > 1 else ""})' for (type_, num, count) in counts)
         await ctx.send(embed = embed)
-        embed = discord.Embed(title = f'Top teams in {ctx.guild.name}', color = discord.Color.blue())
-        embed.description = '\n'.join(
-            f'{ent["team_type"].upper()} team {ent["team_number"]} '
-            f'({ent["count"]} member{"s" if ent["count"] > 1 else ""})' for ent in counts)
-        await ctx.send(embed = embed)
+
 
     top.example_usage = """
     `{prefix}onteam top` - List the 10 teams with the most members in this guild
