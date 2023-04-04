@@ -105,15 +105,16 @@ class General(commands.Cog):
             fqn = f"{command.full_parent_name}[{'|'.join([command.name] + list(command.aliases))}]"
         else:
             fqn = command.qualified_name
-        info = discord.Embed(title = f'Command: {ctx.prefix}{fqn} {command.signature}',
-                             description = command.help or (
-                                 None if command.example_usage else 'No information provided.'),
-                             color = discord.Color.blue())
-        usage = command.example_usage
+        info = discord.Embed(title=f'Command: {ctx.prefix}{fqn} {command.signature}',
+                             description=command.help or (
+                                 None if getattr(command, 'example_usage',
+                                                 None) is None else 'No information provided.'),
+                             color=discord.Color.blue())
+        usage = getattr(command, 'example_usage', None)
         if usage is not None:
-            info.add_field(name = 'Usage', value = usage.format(prefix = ctx.prefix, name = ctx.invoked_with),
-                           inline = False)
-        info.set_footer(text = f'{self.name} Help | {command.qualified_name} command | Info')
+            info.add_field(name='Usage', value=usage.format(prefix=ctx.prefix, name=ctx.invoked_with),
+                           inline=False)
+        info.set_footer(text=f'{self.name} Help | {command.qualified_name} command | Info')
 
         # need to figure out how to walk command.commands correctly
         def all_subcommands(cmd):
@@ -123,8 +124,8 @@ class General(commands.Cog):
 
         await self._show_help(ctx, info, 'Subcommands: {prefix}{name} {signature}', '',
                               '{command.qualified_name!r} command',
-                              all_subcommands(command), command = command, name = command.qualified_name,
-                              signature = command.signature)
+                              all_subcommands(command), command=command, name=command.qualified_name,
+                              signature=command.signature)
 
     async def _help_cog(self, ctx: DozerContext, cog):
         """Gets the help message for one cog."""
