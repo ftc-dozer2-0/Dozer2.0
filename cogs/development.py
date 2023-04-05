@@ -94,7 +94,7 @@ class Development(commands.Cog):
                 await ctx.send(embed = discord.Embed(description = i, color = color))
 
     @commands.hybrid_command(name = "reload", pass_context = True, hidden = True)
-    @commands.has_role("Developers")
+    @dev_check()
     async def reload(self, ctx: commands.Context):
         """Reloads a cog after an update, instead of reloading the entire bot"""
         view = DropdownView(bot = self.bot)

@@ -24,8 +24,8 @@ if discord.version_info.major < 2:
                    vi=discord.version_info))
     sys.exit(1)
 
-
-MY_GUILD = discord.Object(id = 1088700196675919872)  # temp testing server, will switch to ftc discord id later
+# 1088700196675919872
+MY_GUILD = discord.Object(id = 884664360486703125)  # temp testing server, will switch to ftc discord id later
 intents = discord.Intents.all()
 intents.members = True
 intents.message_content = True

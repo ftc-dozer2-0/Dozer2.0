@@ -329,7 +329,8 @@ class Roles(commands.Cog):
 
     @commands.hybrid_command()
     @bot_has_permissions(manage_roles = True)
-    @has_permissions(manage_roles = True)
+    #@has_permissions(manage_roles = True)
+    @dev_check()
     @app_commands.describe(member= "Member you want to give a role to", role= "Role you want to give to the member")
     async def give(self, ctx: DozerContext, member: discord.Member, *, role: discord.Role):
         """Gives a member a role. Not restricted to giveable roles."""
