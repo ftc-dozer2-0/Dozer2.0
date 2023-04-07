@@ -6,6 +6,8 @@ import discord
 from discord import app_commands
 from discord.ext.commands import cooldown, BucketType, guild_only
 from discord.ext import commands
+
+from cogs._utils import dev_check
 from context import DozerContext
 
 blurple = discord.Color.blurple()
@@ -18,8 +20,8 @@ class Fun(commands.Cog):
         self.bot = bot
 
     @guild_only()
-    @cooldown(1, 20, BucketType.channel)
-    @commands.max_concurrency(1, per=BucketType.channel, wait=False)
+    @cooldown(1, 20, BucketType.channel) if not dev_check() else cooldown(10, 0, BucketType.user)
+    @commands.max_concurrency(1, per=BucketType.channel, wait=False) if not dev_check() else commands.max_concurrency(10, per=BucketType.channel, wait=False)
     @commands.hybrid_command(name = "fight", aliases = ["duel"], pass_context = True)
     @app_commands.describe(opponent = "The user you want to fight")
     async def fight(self, ctx: DozerContext, opponent: discord.Member):
