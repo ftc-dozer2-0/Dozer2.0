@@ -4,6 +4,7 @@ import inspect
 import typing
 from collections.abc import Mapping
 from typing import Dict, Union
+from loguru import logger
 
 import discord
 from discord import app_commands

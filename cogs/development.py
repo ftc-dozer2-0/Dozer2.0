@@ -160,6 +160,7 @@ class Development(commands.Cog):
     """
 
     @commands.hybrid_command()
+    @dev_check()
     async def listservers(self, ctx: DozerContext):
         """Lists the servers that the bot is in. Only accessible to developers."""
         embed = discord.Embed(title = "List of servers:", color = discord.Color.blue())

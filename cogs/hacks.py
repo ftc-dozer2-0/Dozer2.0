@@ -22,10 +22,10 @@ MEDIA_CHANNEL_ID = 676583549561995274
 PUBLIC_CHANNEL_IDS = [320719178132881408, 676583549561995274, 771188718198456321]
 DOOC_DISCORD_ID = 884664360486703125
 DOOC_MODS = [748927855219703959, 538729840698982409, 761385417068642305]
+FTC_GUILDS = [884664360486703125, 225450307654647808]
 
 
 class Hacks(Cog):
-
     @Cog.listener()
     async def on_member_join(self, member):
         if member.guild.id == FTC_DISCORD_ID:
@@ -48,7 +48,7 @@ class Hacks(Cog):
         member = message.author
         if message.channel.id == VERIFY_CHANNEL_ID and message.content.lower().startswith(
                 "i have read the rules and regulations"):
-            await member.add_roles(discord.utils.get(message.guild.roles, name="Member"))
+            await member.add_roles(discord.utils.get(message.guild.roles, name = "Member"))
             await member.send("""Thank you for reading the rules and regulations. We would like to welcome you to the 
             FIRST® Tech Challenge Discord Server! Please follow the server rules and have fun! Don't hesitate to ping 
             a member of the moderation team if you have any questions!
@@ -56,7 +56,7 @@ class Hacks(Cog):
             _Please set your nickname with `%nick NAME - TEAM#` in #bot-spam to reflect your team number, or your role in 
             FIRST Robotics if you are not affiliated with a team. If you are not a part of or affiliated directly with a 
             FIRST® Tech Challenge team or the program itself, please contact an administrator for further details._""")
-            await member.edit(nick=(message.author.display_name[:20] + " | SET TEAM#"))
+            await member.edit(nick = (message.author.display_name[:20] + " | SET TEAM#"))
             return
         if message.guild and message.guild.id == FTC_DISCORD_ID and "🐢" in message.content and message.author.id != self.bot.user.id:
             pass  # why does this exist here?
@@ -71,15 +71,15 @@ class Hacks(Cog):
             await message.add_reaction('👎')
 
         if message.guild.id == 884664360486703125:
-            if message.author.id in DOOC_MODS:
+            if message.author.id in DOOC_MODS: # this is self-explanatory as per rule 4 of the dooc server
                 await message.add_reaction("<:modaboos:927346308551954443>")
-            if message.author.id == 787125089434730537:
+            if message.author.id == 787125089434730537: #olivia/viamarkable
                 await message.add_reaction("👶")
             if "i'm" in message.content.lower():
                 if message.author.bot:
                     return
                 text = message.content.lower()
-                person = text.split("i'm ")[1]
+                person = text.split("i'm")[1]
                 await message.reply(f"Hi {person}, I'm Dozer!")
 
     @Cog.listener()
@@ -101,47 +101,47 @@ class Hacks(Cog):
         if message.guild and message.guild.id == FTC_DISCORD_ID and message.channel.id == 771188718198456321 and reaction.emoji == "🍞":
             await reaction.message.remove_reaction(reaction, user)
             # await self.clear_reactions(reaction)
-        if message.guild and message.guild.id == FTC_DISCORD_ID and message.content.lower().startswith(
+        if message.guild and message.guild.id in FTC_GUILDS and message.content.lower().startswith(
                 "no u") and message.author.id != self.bot.user.id:
             await message.channel.send("no u")  # ok to be funny I uncommented this
 
     # deleted mkteamrole, no longer used
 
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
+    @has_permissions(manage_roles = True)
+    @bot_has_permissions(manage_roles = True)
     @commands.hybrid_command()
-    @app_commands.describe(member="The member to force undeafen")
+    @app_commands.describe(member = "The member to force undeafen")
     @commands.guild_only()
     async def forceundeafen(self, ctx, member: discord.Member):
         async with ctx.typing():
-            await ctx.bot.cogs["Moderation"].perm_override(member, read_messages=None)
+            await ctx.bot.cogs["Moderation"].perm_override(member, read_messages = None)
         await ctx.send("Overwrote perms for {member}")
 
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @commands.hybrid_command(name="takeemotes", aliases=["takeemote", "Lemotes", "bread", "🍞"])
-    @app_commands.describe(member="The member to take emotes from")
+    @has_permissions(manage_roles = True)
+    @bot_has_permissions(manage_roles = True)
+    @commands.hybrid_command(name = "takeemotes", aliases = ["takeemote", "Lemotes", "bread", "🍞"])
+    @app_commands.describe(member = "The member to take emotes from")
     @commands.guild_only()
     async def takeemotes(self, ctx, member: discord.Member):
         async with ctx.typing():
-            await ctx.bot.cogs["Moderation"].perm_override(member, external_emojis=False)
-        await ctx.send(f"took away external emote perms for {member}", ephemeral=True)
+            await ctx.bot.cogs["Moderation"].perm_override(member, external_emojis = False)
+        await ctx.send(f"took away external emote perms for {member}", ephemeral = True)
 
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @commands.hybrid_command(name="giveemotes", aliases=["giveemote", "Gemotes"])
-    @app_commands.describe(member="The member to give emote perms")
+    @has_permissions(manage_roles = True)
+    @bot_has_permissions(manage_roles = True)
+    @commands.hybrid_command(name = "giveemotes", aliases = ["giveemote", "Gemotes"])
+    @app_commands.describe(member = "The member to give emote perms")
     async def giveemotes(self, ctx, member: discord.Member):
         async with ctx.typing():
-            await ctx.bot.cogs["Moderation"].perm_override(member, external_emojis=None)
-        await ctx.send(f"reset external emote perms for {member}", ephemeral=True)
+            await ctx.bot.cogs["Moderation"].perm_override(member, external_emojis = None)
+        await ctx.send(f"reset external emote perms for {member}", ephemeral = True)
 
-    @has_permissions(add_reactions=True)
-    @bot_has_permissions(add_reactions=True)
+    @has_permissions(add_reactions = True)
+    @bot_has_permissions(add_reactions = True)
     @commands.command()
     async def vote(self, ctx: DozerContext, options: int = None):
         if options is not None:
-            options = int(options)
+            options = int(options) or None
         if options == 2 or options is None or not isinstance(options, int):
             await ctx.message.add_reaction('👍')
             await ctx.message.add_reaction('👎')
@@ -151,22 +151,23 @@ class Hacks(Cog):
             for number in numbers[:options]:
                 await ctx.message.add_reaction(number)
 
-    @cooldown(1, 150, BucketType.user)
-    @bot_has_permissions(embed_links=True)
-    @commands.hybrid_command(name="sleep", aliases=["💀", "bed", "🛏️", "goSleep", "goToBed", "goToSleep"])
-    @app_commands.describe(member="The member to send the sleep message to")
+    @cooldown(1, 150, BucketType.user) if not dev_check() else cooldown(10, 0, BucketType.user)
+    @bot_has_permissions(embed_links = True)
+    @commands.hybrid_command(name = "sleep", aliases = ["💀", "bed", "🛏️", "goSleep", "goToBed", "goToSleep"])
+    @app_commands.describe(member = "The member to send the sleep message to")
     # ok at this point I'm just adding a ton of random aliases for fun
     async def sleep(self, ctx, member: discord.Member = None):
         IMG_URL = "https://i.imgur.com/ctzynlC.png"
         await ctx.send(IMG_URL)
-        if member:  # updated number of E's to send
-            await member.send("🛌 **GO TO SLEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEP** 🛌")
+        if member and member.id not in ctx.bot.config['developers']:  # updated number of E's to send
+            await member.send("🛌 **GO TO SLEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEP** 🛌", delete_after = 60*60*24)
 
-    @commands.hybrid_command()
+    @commands.command()
     @dev_check()
     async def echo(self, ctx: DozerContext, *, message: str):
         await ctx.send(message)
         await ctx.message.delete()
+
 
 async def setup(bot):
     await bot.add_cog(Hacks(bot))
