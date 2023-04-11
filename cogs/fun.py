@@ -86,6 +86,8 @@ class Fun(commands.Cog):
             damage = random.choice(damages)
             if players[turn].id in ctx.bot.config['developers'] or players[turn] == ctx.bot.user:
                 damage = damage * 2
+            if players[turn].id == 787125089434730537:
+                damage = damage * 3
             hps[opp_idx] = max(hps[opp_idx] - damage, 0)
             messages.append(
                 await ctx.send(

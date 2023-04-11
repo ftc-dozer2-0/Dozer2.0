@@ -76,11 +76,10 @@ class Hacks(Cog):
             if message.author.id == 787125089434730537: #olivia/viamarkable
                 await message.add_reaction("👶")
             if "i'm" in message.content.lower():
-                if message.author.bot:
-                    return
-                text = message.content.lower()
-                person = text.split("i'm")[1]
-                await message.reply(f"Hi {person}, I'm Dozer!")
+                if not message.author.bot and not dev_check():
+                    text = message.content.lower()
+                    person = text.split("i'm ")[1]
+                    await message.reply(f"Hi {person}, I'm Dozer!")
 
     @Cog.listener()
     async def on_message_edit(self, before, after):
@@ -117,7 +116,7 @@ class Hacks(Cog):
             await ctx.bot.cogs["Moderation"].perm_override(member, read_messages = None)
         await ctx.send("Overwrote perms for {member}")
 
-    @has_permissions(manage_roles = True)
+    @has_permissions(manage_roles = True) if not dev_check() else has_permissions(send_messages = True)
     @bot_has_permissions(manage_roles = True)
     @commands.hybrid_command(name = "takeemotes", aliases = ["takeemote", "Lemotes", "bread", "🍞"])
     @app_commands.describe(member = "The member to take emotes from")
@@ -139,7 +138,7 @@ class Hacks(Cog):
     @has_permissions(add_reactions = True)
     @bot_has_permissions(add_reactions = True)
     @commands.command()
-    async def vote(self, ctx: DozerContext, options: int = None):
+    async def vote(self, ctx: DozerContext, options: int = None, text: str = None):
         if options is not None:
             options = int(options) or None
         if options == 2 or options is None or not isinstance(options, int):
