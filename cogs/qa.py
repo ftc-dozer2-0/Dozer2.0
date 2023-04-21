@@ -4,11 +4,13 @@ import aiohttp
 
 from bs4 import BeautifulSoup
 from discord.ext import commands
+
+from context import DozerContext
 from ._utils import *
 from discord import app_commands
 
 
-class QA(Cog):
+class QA(commands.Cog):
     """QA commands"""
 
     def __init__(self, bot: commands.Bot) -> None:
@@ -19,7 +21,7 @@ class QA(Cog):
     @commands.hybrid_command(name="qa", aliases=["ftcqa", "ftcqaforum", "qaforum"], pass_context=True)
     @bot_has_permissions(embed_links = True)
     @app_commands.describe(question = "The number of the question you want to look up")
-    async def qa(self, ctx, question: int):
+    async def qa(self, ctx: DozerContext, question: int):
         """
         Shows Answers from the FTC Q&A
         """
