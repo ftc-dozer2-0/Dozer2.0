@@ -1,7 +1,6 @@
 """Provides commands that pull information from First Q&A Form."""
 import discord
 import aiohttp
-import asyncio
 
 from bs4 import BeautifulSoup
 from discord.ext import commands
@@ -31,7 +30,7 @@ class QA(Cog):
 
         start = answers.find('Q' + str(question) + ' ')
         a = ""
-        if (start > 0):
+        if start > 0:
 
             finish = answers.find('answered', start) + 24
             a = answers[start:finish]
@@ -57,7 +56,7 @@ class QA(Cog):
             embed.set_footer(
                 text = a[a.find(" ( Asked by ") + 1:])
 
-            await ctx.send(embed = embed)
+            await ctx.send(embed = embed, ephemeral = True)
 
         else:
             a = "That question was not answered or does not exist."
