@@ -13,9 +13,9 @@ from discord import app_commands
 class QA(commands.Cog):
     """QA commands"""
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot) -> None:
         self.ses = aiohttp.ClientSession()
-        super().__init__(bot)
+        super().__init__()
         self.bot = bot
 
     @commands.hybrid_command(name="qa", aliases=["ftcqa", "ftcqaforum", "qaforum"], pass_context=True)
