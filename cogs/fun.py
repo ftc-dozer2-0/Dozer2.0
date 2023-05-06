@@ -20,8 +20,7 @@ class Fun(commands.Cog):
         self.bot = bot
 
     @guild_only()
-    @cooldown(1, 20, BucketType.channel) if not dev_check() else cooldown(10, 0, BucketType.user)
-    @commands.max_concurrency(1, per=BucketType.channel, wait=False) if not dev_check() else commands.max_concurrency(10, per=BucketType.channel, wait=False)
+    @cooldown(1, 20, BucketType.user) if not dev_check() else cooldown(10, 0, BucketType.user)
     @commands.hybrid_command(name = "fight", aliases = ["duel"], pass_context = True)
     @app_commands.describe(opponent = "The user you want to fight")
     async def fight(self, ctx: DozerContext, opponent: discord.Member):
@@ -86,8 +85,8 @@ class Fun(commands.Cog):
             damage = random.choice(damages)
             if players[turn].id in ctx.bot.config['developers'] or players[turn] == ctx.bot.user:
                 damage = damage * 2
-            if players[turn].id == 787125089434730537:
-                damage = damage * 3
+            if players[turn].id == 787125089434730537: #olivia gets minor power boost for no reason whatsoever now
+                damage = damage * 2.2
             hps[opp_idx] = max(hps[opp_idx] - damage, 0)
             messages.append(
                 await ctx.send(

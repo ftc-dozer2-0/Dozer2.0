@@ -17,7 +17,6 @@ from Components.CustomJoinLeaveMessages import send_log, CustomJoinLeaveMessages
 from ._utils import *
 from context import DozerContext
 import db
-from .profile_menus import member_avatar_url
 from Components.TeamNumbers import TeamNumbers
 
 blurple = discord.Color.blurple()
@@ -414,7 +413,7 @@ class Moderation(Cog):
     async def on_member_remove(self, member):
         """Logs that a member left."""
         leave = discord.Embed(type='rich', color=0xFF0000)
-        leave.set_author(name='Member Left', icon_url=member_avatar_url(member))
+        leave.set_author(name='Member Left', icon_url=member.avatar.replace(static_format = 'png', size = 32) or None)
         leave.description = "{0.mention}\n{0} ({0.id})".format(member)
         leave.set_footer(text="{} | {} members".format(member.guild.name, member.guild.member_count))
 
@@ -463,7 +462,7 @@ class Moderation(Cog):
             return
         e = discord.Embed(type='rich', title='Message Deleted', color=0xff0000)
         e.timestamp = datetime.datetime.utcnow()
-        e.set_author(name=f"{message.author} in #{message.channel}", icon_url=member_avatar_url(message.author))
+        e.set_author(name=f"{message.author} in #{message.channel}", icon_url=message.author.avatar.replace(static_format = 'png', size = 32) or None)
         e.add_field(name='Channel link', value=message.channel.mention)
         e.add_field(name='Author pingable', value=message.author.mention)
 
@@ -496,7 +495,7 @@ class Moderation(Cog):
             # There is a reason for this. That reason is that otherwise, an infinite spam loop occurs
             e = discord.Embed(type='rich', title='Message Edited', color=0xffc400)
             e.timestamp = after.edited_at
-            e.set_author(name=f"{before.author} in #{before.channel}", icon_url=member_avatar_url(before.author))
+            e.set_author(name=f"{before.author} in #{before.channel}", icon_url=before.author.avatar.replace(static_format = 'png', size = 32) or None)
 
             if 1024 > len(before.content) > 0:
                 e.add_field(name="Old message", value=before.content)
