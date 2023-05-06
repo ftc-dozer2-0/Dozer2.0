@@ -6,6 +6,9 @@ import sys
 from discord.ext.commands import NotOwner
 from cogs._utils import *
 from discord.ext import commands
+from loguru import logger
+
+from context import DozerContext
 
 
 class Maintenance(Cog):
@@ -23,13 +26,11 @@ class Maintenance(Cog):
         return True
 
     @commands.hybrid_command()
-    async def shutdown(self, ctx):
+    async def shutdown(self, ctx: DozerContext):
         """Force-stops the bot."""
-        await ctx.send('Shutting down', ephemeral=True)
-        dozer_logger.info('Shutting down at request of {}#{} (in {}, #{})'.format(ctx.author.name,
-                                                                                  ctx.author.discriminator,
-                                                                                  ctx.guild.name,
-                                                                                  ctx.channel.name))
+        await ctx.send('Shutting down')
+        logger.info(f'Shutting down at request of {ctx.author.name}#{ctx.author.discriminator} '
+                    f'(in {ctx.guild.name}, #{ctx.channel.name})')
         await self.bot.shutdown()
 
     shutdown.example_usage = """

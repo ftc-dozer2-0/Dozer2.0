@@ -12,7 +12,6 @@ from discord.ext import commands
 from discord import app_commands
 
 from ._utils import *
-from .profile_menus import member_avatar_url
 
 blurple = discord.Color.blurple()
 startup_time = time.time()
@@ -49,7 +48,7 @@ class Info(Cog):
          """
         if member is None:
             member = ctx.author
-        icon_url = member_avatar_url(member)
+        icon_url = member.avatar.replace(static_format = 'png', size = 32) or None
 
         embed = discord.Embed(title = member.display_name, description = f'{member!s} ({member.id}) | {member.mention}',
                               color = member.color)
@@ -86,7 +85,7 @@ class Info(Cog):
         e.title = guild.name
         e.description = f"{guild.member_count} members, {len(guild.channels)} channels, {len(guild.roles) - 1} roles"
         e.add_field(name = 'ID', value = guild.id)
-        e.add_field(name = 'Created at', value = discord.utils.format_dt(guild.created_at))
+        e.add_field(name = 'Created on', value = discord.utils.format_dt(guild.created_at))
         e.add_field(name = 'Owner', value = guild.owner.mention)
         e.add_field(name = 'Emoji', value = f"{static_emoji} static, {animated_emoji} animated")
         e.add_field(name = 'Nitro Boost', value = f'Level {ctx.guild.premium_tier}, '
@@ -106,8 +105,6 @@ class Info(Cog):
 
         frame = "\n".join(
             map(lambda x: f"{str(x[0]):<24}{str(x[1])}", {
-                "{:=^48}".format(f" Stats for {info.name} "): "",
-                "Bot owner:": info.owner,
                 "Users:": len(ctx.bot.users),
                 "Channels:": len(list(ctx.bot.get_all_channels())),
                 "Servers:": len(ctx.bot.guilds),
@@ -116,7 +113,8 @@ class Info(Cog):
                 "Operating system:": os_name,
                 "Process uptime": str(datetime.timedelta(seconds = round(time.time() - startup_time)))
             }.items()))
-        await ctx.send(f"```\n{frame}\n```", ephemeral = True)
+        embed = discord.Embed(title = f"Stats for {info.name}", description = f"Bot owner: {info.owner.mention}```{frame}```", color = blurple)
+        await ctx.send(embed=embed, ephemeral = True)
 
     stats.example_usage = """
     `{prefix}stats` - get current bot/host stats
@@ -129,17 +127,17 @@ class Info(Cog):
         """Retrieve info about a role in this guild"""
         embed = discord.Embed(title = f"Info for role: {role.name}", description = f"{role.mention} ({role.id})",
                               color = role.color)
-        embed.add_field(name = "Created on", value = f"<t:{int(role.created_at.timestamp())}:f>")
+        embed.add_field(name = "Created on", value = discord.utils.format_dt(role.created_at))
         embed.add_field(name = "Position", value = role.position)
         embed.add_field(name = "Color", value = str(role.color).upper())
         embed.add_field(name = "Assigned members", value = f"{len(role.members)}", inline = False)
-        await ctx.send(embed = embed)
+        await ctx.send(embed = embed, ephemeral = True)
 
     @commands.hybrid_command(aliases = ['withrole'])
     @guild_only()
     async def rolemembers(self, ctx: DozerContext, role: discord.Role):
         """Retrieve members who have this role"""
-        await ctx.defer()
+        await ctx.defer(ephemeral = True)
         embeds = []
         for page_num, page in enumerate(chunk(role.members, 10)):
             embed = discord.Embed(title = f"Members for role: {role.name}", color = role.color)
