@@ -265,7 +265,7 @@ class General(commands.Cog):
 
     @commands.hybrid_command(aliases = ["setprefix"])
     @commands.guild_only()
-    @has_permissions(manage_guild = True)
+    @has_permissions(manage_guild = True) or dev_check()
     async def configprefix(self, ctx: DozerContext, prefix: str):
         """Update a servers dynamic prefix"""
         new_prefix = DynamicPrefixEntry(

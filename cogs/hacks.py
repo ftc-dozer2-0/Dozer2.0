@@ -26,6 +26,16 @@ FTC_GUILDS = [884664360486703125, 225450307654647808]
 
 
 class Hacks(Cog):
+    def __init__(self, bot: commands.Bot) -> None:
+        super().__init__(bot)
+        self.bot = bot
+        self.config = self.bot.config
+
+    @Cog.listener()
+    async def on_guild_join(self, guild):
+        activity = discord.Game(name = f"'{self.config['prefix']}' in {len(self.guilds)} guilds")
+        await self.bot.change_presence(activity = activity)
+
     @Cog.listener()
     async def on_member_join(self, member):
         if member.guild.id == FTC_DISCORD_ID:
