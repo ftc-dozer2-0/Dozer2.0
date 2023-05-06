@@ -46,6 +46,8 @@ class Hacks(Cog):
     @Cog.listener()
     async def on_message(self, message):
         member = message.author
+        if message.guild is None:
+            return
         if message.channel.id == VERIFY_CHANNEL_ID and message.content.lower().startswith(
                 "i have read the rules and regulations"):
             await member.add_roles(discord.utils.get(message.guild.roles, name = "Member"))
