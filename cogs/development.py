@@ -18,6 +18,7 @@ MY_GUILD = discord.Object(id = 1088700196675919872)  # temp testing server, will
 
 
 class Dropdown(discord.ui.Select):
+    """Dropdown menu class to reload cogs using a neat menu"""
     def __init__(self, bot):
         # Set the options that will be presented inside the dropdown
         options = [discord.SelectOption(label = ext[:-3], description = f"Reload {ext[:-3]}") for ext in
@@ -29,6 +30,7 @@ class Dropdown(discord.ui.Select):
         self.bot = bot
 
     async def callback(self, interaction: discord.Interaction):
+        """creates a callback for the reload dropdown menu"""
         # We can use the interaction object to send a response message containing
         # the user's favourite colour or choice. The self object refers to the
         # Select object, and the values attribute gets a list of the user's
@@ -48,6 +50,7 @@ class Dropdown(discord.ui.Select):
 
 
 class DropdownView(discord.ui.View):
+    """Creates a dropdown menu"""
     def __init__(self, bot):
         super().__init__()
         # Adds the dropdown to our view object.

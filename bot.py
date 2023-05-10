@@ -126,7 +126,7 @@ class Dozer(commands.Bot):
                 '```\n' + ''.join(traceback.format_exception_only(type(exception), exception)).strip() + '\n```')
             if isinstance(context.channel, discord.TextChannel):
                 logger.error(
-                    f'Error in command <{context.command}> ({context.guild.name!r}({g.id}) {context.channel}'
+                    f'Error in command <{context.command}> ({context.guild.name!r}({context.guild.id}) {context.channel}'
                     f'({context.channel.id}) {context.author}({context.author.id}) {context.message.content})')
             else:
                 logger.error('Error in command <{c.command}> (DM {recipient}({recipient.id}) {content})'.format(

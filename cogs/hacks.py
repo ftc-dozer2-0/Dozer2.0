@@ -9,6 +9,7 @@ from discord import app_commands
 from loguru import logger
 from context import DozerContext
 import datetime
+from ._utils import not_dev
 
 # as the name implies, this cog is hilariously hacky code.
 # it's very ftc server specific code, made specifically for its own needs.
@@ -89,9 +90,12 @@ class Hacks(Cog):
             if message.author.id in DOOC_MODS: # this is self-explanatory as per rule 4 of the dooc server
                 await message.add_reaction("<:modaboos:927346308551954443>")
             if message.author.id == 787125089434730537: #olivia/viamarkable
+                if "hi " in message.content:
+                    await message.delete()
+                    return
                 await message.add_reaction("👶")
             if "i'm" in message.content.lower():
-                if not message.author.bot and not dev_check():
+                if not message.author.bot and message.author.id not in self.config["developers"]:
                     text = message.content.lower()
                     person = text.split("i'm ")[1]
                     await message.reply(f"Hi {person}, I'm Dozer!")

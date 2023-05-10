@@ -125,6 +125,17 @@ def dev_check():
     return commands.check(predicate)
 
 
+def not_dev():
+    """Function decorator to check that the calling user is not a developer"""
+
+    async def predicate(ctx: DozerContext):
+        if ctx.author.id not in ctx.bot.config['developers']:
+            return True
+        else:
+            return False
+
+    return commands.check(predicate)
+
 class Reactor:
     """
     A simple way to respond to Discord reactions.
