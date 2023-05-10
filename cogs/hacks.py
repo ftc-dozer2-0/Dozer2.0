@@ -1,4 +1,6 @@
 # pylint: skip-file
+from typing import Union
+
 from discord.ext.commands import has_permissions, bot_has_permissions, BucketType, cooldown
 from ._utils import *
 import discord
@@ -6,6 +8,7 @@ from discord.ext import commands
 from discord import app_commands
 from loguru import logger
 from context import DozerContext
+import datetime
 
 # as the name implies, this cog is hilariously hacky code.
 # it's very ftc server specific code, made specifically for its own needs.
@@ -113,7 +116,8 @@ class Hacks(Cog):
             await reaction.message.remove_reaction(reaction, user)
             # await self.clear_reactions(reaction)
         if message.guild and message.guild.id in FTC_GUILDS and message.content.lower().startswith(
-                "no u") and message.author.id != self.bot.user.id:
+                "no u") and message.author.id != self.bot.user.id and message.created_at > \
+                (datetime.datetime.now() - datetime.timedelta(minutes = 10)):
             await message.channel.send("no u")  # ok to be funny I uncommented this
 
     # deleted mkteamrole, no longer used
@@ -150,9 +154,12 @@ class Hacks(Cog):
     @has_permissions(add_reactions = True)
     @bot_has_permissions(add_reactions = True)
     @commands.command()
-    async def vote(self, ctx: DozerContext, options: int = None, text: str = None):
-        if options is not None:
-            options = int(options) or None
+    async def vote(self, ctx: DozerContext, options: Union[int, str] = None, text: str = None):
+        if isinstance(options, str):
+            try:
+                options = int(options)
+            except ValueError:
+                options = None
         if options == 2 or options is None or not isinstance(options, int):
             await ctx.message.add_reaction('👍')
             await ctx.message.add_reaction('👎')
