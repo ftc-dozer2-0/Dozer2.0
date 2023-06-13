@@ -111,7 +111,7 @@ class Info(Cog):
                 "": "",
                 f"{' Host stats ':=^48}": "",
                 "Operating system:": os_name,
-                "Process uptime": str(datetime.datetime.timedelta(seconds = round(time.time() - startup_time)))
+                "Process uptime": str(datetime.timedelta(seconds = round(time.time() - startup_time)))
             }.items()))
         embed = discord.Embed(title = f"Stats for {info.name}", description = f"Bot owner: {info.owner.mention}```{frame}```", color = blurple)
         await ctx.send(embed=embed, ephemeral = True)
