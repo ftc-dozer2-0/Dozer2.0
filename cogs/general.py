@@ -218,14 +218,7 @@ class General(commands.Cog):
         The generated link gives all permissions the bot requires. If permissions are removed, some commands will be unusable.
         """
         perms = 1394249694327
-
-        if self.name == "FTC Server Dozer":
-            await ctx.send("Here's an invite link for the public version of this bot, "
-                           "[Plowie](https://discordapp.com/oauth2/authorize?client_id=474456308813266945"
-                           "&scope=bot&permissions=1073081847)")
-        else:
-            await ctx.send(f'<{(discord.utils.oauth_url(client_id=ctx.me.id, permissions=discord.Permissions(perms)))}>')
-
+        await ctx.send(f'<{(discord.utils.oauth_url(client_id=ctx.me.id, permissions=discord.Permissions(perms)))}>')
     invite.example_usage = """
     `{prefix}invite` - display the bot's invite link. 
     """
