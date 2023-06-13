@@ -1,6 +1,7 @@
 # pylint: skip-file
 from typing import Union
 
+import pytz
 from discord.ext.commands import has_permissions, bot_has_permissions, BucketType, cooldown
 from ._utils import *
 import discord
@@ -10,7 +11,7 @@ from loguru import logger
 from context import DozerContext
 import datetime
 from ._utils import not_dev
-
+global count
 # as the name implies, this cog is hilariously hacky code.
 # it's very ftc server specific code, made specifically for its own needs.
 # i stuck it in git for maintenance purposes.
@@ -60,6 +61,7 @@ class Hacks(Cog):
     @Cog.listener()
     async def on_message(self, message):
         member = message.author
+        global count
         if message.guild is None:
             return
         if message.channel.id == VERIFY_CHANNEL_ID and message.content.lower().startswith(
@@ -93,12 +95,17 @@ class Hacks(Cog):
                 if "hi " in message.content:
                     await message.delete()
                     return
-                await message.add_reaction("👶")
+                count+=1
+                if count >4:
+                    await message.add_reaction("👶")
+                    count =0
             if "i'm" in message.content.lower():
                 if not message.author.bot and message.author.id not in self.config["developers"]:
                     text = message.content.lower()
-                    person = text.split("i'm ")[1]
+                    person = text.split("i'm ")[1].strip()
                     await message.reply(f"Hi {person}, I'm Dozer!")
+            if message.author.id == 1018237375433953430 and "stephanie" in message.content.lower(): #meheretE
+                await message.reply("*Stephan*")
 
     @Cog.listener()
     async def on_message_edit(self, before, after):
@@ -120,9 +127,8 @@ class Hacks(Cog):
             await reaction.message.remove_reaction(reaction, user)
             # await self.clear_reactions(reaction)
         if message.guild and message.guild.id in FTC_GUILDS and message.content.lower().startswith(
-                "no u") and message.author.id != self.bot.user.id and message.created_at > \
-                (datetime.datetime.now() - datetime.timedelta(minutes = 10)):
-            await message.channel.send("no u")  # ok to be funny I uncommented this
+                "no u") and message.author.id != self.bot.user.id and discord.utils.compute_timedelta(message.created_at)<(60):
+            await message.channel.send("no u", delete_after=300)  # ok to be funny I uncommented this
 
     # deleted mkteamrole, no longer used
 
@@ -181,7 +187,7 @@ class Hacks(Cog):
     async def sleep(self, ctx, member: discord.Member = None):
         IMG_URL = "https://i.imgur.com/ctzynlC.png"
         await ctx.send(IMG_URL)
-        if member and member.id not in ctx.bot.config['developers']:  # updated number of E's to send
+        if member and member.id not in ctx.bot.config['developers'] and "Mod" not in member.roles:  # updated number of E's to send
             await member.send("🛌 **GO TO SLEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEP** 🛌", delete_after = 60*60*24)
 
     @commands.command()
