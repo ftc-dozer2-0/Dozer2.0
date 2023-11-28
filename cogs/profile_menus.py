@@ -65,24 +65,6 @@ async def onteam(interaction: discord.Interaction, user: discord.Member):
             embed.description = embed.description[:4000] + "..."
         await interaction.response.send_message(embed = embed, ephemeral = False)
 
-        return
-
-        e = discord.Embed(type = 'rich')
-        e.title = f'Users on team {team_number}'
-        e.description = "Users: \n"
-        extra_mems = ""
-        for i in users:
-            user = ctx.guild.get_member(i.user_id)
-            if user is not None:
-                memstr = f"{escape_markdown(user.display_name)} {user.mention} \n"
-                if len(e.description + memstr) > 2047:
-                    extra_mems += memstr
-                else:
-                    e.description = e.description + memstr
-        if len(extra_mems) != 0:
-            e.add_field(name = f"Users on team {team_number}", value = extra_mems)
-        await interaction.response.send_message(embed = e, ephemeral = True)
-
 
 async def setup(bot):
     """Adds the profile context menus cog to the bot."""
