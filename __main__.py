@@ -21,6 +21,10 @@ config = {
     'toa': {
         'app_name': 'Dozer',
     },
+    'ftc-events': {
+        'username': 'Put FTC-Events username here',
+        'token': 'Put FTC-Events token here'
+    },
     'db_url': 'postgres://dozer_user:simplepass@postgres',
     'discord_token': "Put Discord API Token here.",
     'news': {
