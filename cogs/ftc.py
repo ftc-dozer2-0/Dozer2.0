@@ -187,7 +187,7 @@ class FTCInfo(Cog):
         self.http_session = bot.add_aiohttp_ses(aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(5)))
         self.ftcevents = FTCEventsClient(bot.config['ftc-events']['username'], bot.config['ftc-events']['token'], self.http_session)
 
-    @group(invoke_without_command=True)
+    @group(invoke_without_command=True, aliases=["ftcteam", "toa", "toateam", "ftcteaminfo"])
     async def ftc(self, ctx: DozerContext, team_num: int):
         """
         Get information on an FTC team from FTC-Events.
@@ -230,6 +230,7 @@ class FTCInfo(Cog):
                         value=', '.join((team_data['city'], team_data['stateProv'], team_data['country'])) or "Unknown")
             e.add_field(name='Org/Sponsors', value=team_data.get('nameFull', "").strip() or "_ _")
             e.add_field(name='Website', value=website or 'n/a')
+            e.add_field(name='Team Info Page', value=f'https://ftcscout.org/teams/{team_num}')
             await ctx.send(embed=e)
 
     team.example_usage = """
