@@ -94,4 +94,4 @@ class TOA(commands.Cog):
 
 async def setup(bot):
     """Adds the TOA cog to the bot."""
-    await bot.add_cog(TOA(bot))
+    #await bot.add_cog(TOA(bot))
