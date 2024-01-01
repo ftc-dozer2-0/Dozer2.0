@@ -18,9 +18,6 @@ config = {
     'tba': {
         'key': 'Put TBA API key here'
     },
-    'toa': {
-        'app_name': 'Dozer',
-    },
     'ftc-events': {
         'username': 'Put FTC-Events username here',
         'token': 'Put FTC-Events token here'

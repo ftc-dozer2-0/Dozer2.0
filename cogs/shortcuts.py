@@ -184,7 +184,7 @@ class ShortcutSetting(db.DatabaseTable):
             CREATE TABLE {cls.__tablename__} (
             guild_id bigint PRIMARY KEY NOT NULL,
             approved boolean NOT NULL,
-            prefix text null,
+            prefix text null
             )""")
 
     def __init__(self, guild_id: int, approved: bool, prefix: str = '!'):
