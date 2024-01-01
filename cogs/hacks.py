@@ -84,7 +84,7 @@ class Hacks(Cog):
         if message.channel.id in PUBLIC_CHANNEL_IDS:
             await message.publish()
 
-        if (message.channel.id in VOTE_CHANNEL_IDS) & message.type != discord.MessageType.thread_created:
+        if (message.channel.id in VOTE_CHANNEL_IDS) & (message.type != discord.MessageType.thread_created):
             await message.add_reaction('👍')
             await message.add_reaction('👎')
 
