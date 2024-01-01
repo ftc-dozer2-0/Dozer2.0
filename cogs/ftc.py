@@ -9,6 +9,7 @@ import base64
 import aiohttp
 import async_timeout
 import discord
+from discord import app_commands
 from discord.ext import commands
 from discord.utils import escape_markdown
 
@@ -243,6 +244,7 @@ class FTCInfo(Cog):
 
     @ftc.command()
     @bot_has_permissions(embed_links=True)
+    @app_commands.describe(team_num: "The number of the team you're interested in getting info")
     async def team(self, ctx: DozerContext, team_num: int):
         """Get information on an FTC team by number."""
         if team_num < 1:
@@ -294,6 +296,7 @@ class FTCInfo(Cog):
 
     @ftc.command()
     @bot_has_permissions(embed_links=True)
+    @app_commands.describe(team_num: "The number of the team you're interested in getting matches for", event_name: "The official name of the event")
     async def matches(self, ctx: DozerContext, team_num: int, event_name: str = "latest"):
         """Get a match schedule, defaulting to the latest listed event on FTC-Events"""
         szn = FTCEventsClient.get_season()
