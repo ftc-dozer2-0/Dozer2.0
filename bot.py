@@ -19,9 +19,8 @@ from context import DozerContext
 # from asyncdb.orm import orm #this is for the database that dozer uses
 
 if discord.version_info.major < 2:
-    logger.error("Your installed discord.py version is too low "
-                 "{vi.major}.{vi.minor}.{vi.micro}, please upgrade to at least 2.0.0".format(
-                   vi=discord.version_info))
+    logger.error(f"Your installed discord.py version is too low "
+                 "{discord.version_info.major}.{discord.version_info.minor}.{discord.version_info.micro}, please upgrade to at least 2.0.0")
     sys.exit(1)
 
 # 1088700196675919872
