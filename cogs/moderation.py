@@ -429,6 +429,8 @@ class Moderation(Cog):
             return
         if await self.check_links(message):
             return
+        if message.type == discord.MessageType.thread_created:
+            await message.delete()
         config = await GuildNewMember.get_by(guild_id=message.guild.id)
         ctx = await self.bot.get_context(message)
         if len(config) != 0:

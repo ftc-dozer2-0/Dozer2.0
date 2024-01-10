@@ -1,4 +1,4 @@
-"""Provides commands that pull information from The Orange Alliance, an FTC info API."""
+"""Provides commands that pull information from FTC-Events and FTCScout."""
 
 import json
 from asyncio import sleep
@@ -278,15 +278,15 @@ class FTCInfo(Cog):
             e.add_field(name='Team Info Page', value=f'https://ftcscout.org/teams/{team_num}')
 
             if sres.status != 404:
-                team_stats = await sres.json(content_type=None)
-                e.add_field(name='Total OPR', value=str(round(team_stats['tot']['value'], 1)) + ", rank #" + str(
-                    team_stats['tot']['rank']))
-                e.add_field(name='Auto OPR', value=str(round(team_stats['auto']['value'], 1)) + ", rank #" + str(
-                    team_stats['auto']['rank']))
-                e.add_field(name='Teleop OPR',
-                            value=str(round(team_stats['dc']['value'], 1)) + ", rank #" + str(team_stats['dc']['rank']))
-                e.add_field(name='Endgame OPR',
-                            value=str(round(team_stats['eg']['value'], 1)) + ", rank #" + str(team_stats['eg']['rank']))
+                team_stats = await sres.json(content_type = None)
+                e.add_field(name = 'Total OPR',
+                            value = f"{team_stats['tot']['value']:.0f}, rank #{team_stats['tot']['rank']:.0f}")
+                e.add_field(name = 'Auto OPR',
+                            value = f"{team_stats['auto']['value']:.0f}, rank #{team_stats['auto']['rank']:.0f}")
+                e.add_field(name = 'Teleop OPR',
+                            value = f"{team_stats['dc']['value']:.0f}, rank #{team_stats['dc']['rank']:.0f}")
+                e.add_field(name = 'Endgame OPR',
+                            value = f"{team_stats['eg']['value']:.0f}, rank #{team_stats['eg']['rank']:.0f}")
 
             await ctx.send(embed=e)
 
@@ -349,9 +349,11 @@ class FTCInfo(Cog):
         # fetch the rankings
         rank_res = await self.ftcevents.reqjson(f"rankings/{event['code']}?" + urlencode({'teamNumber': str(team_num)}),
                                                 on_400=lambda r: ctx.send(
-                                                    f"This team somehow competed at an event ({event_url}) that it is not ranked in -- did it no show?"),
+                                                    f"This team somehow competed at an event ({event_url}) that it is "
+                                                    f"not ranked in -- did it no show?"),
                                                 on_other=lambda r: ctx.send(
-                                                    f"FTC-Events returned an HTTP error status of: {r.status}. Something is broken.")
+                                                    f"FTC-Events returned an HTTP error status of: {r.status}. "
+                                                    f"Something is broken.")
                                                 )
         if rank_res is None:
             return
