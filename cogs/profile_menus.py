@@ -4,7 +4,6 @@ from discord.ext import commands
 from discord import app_commands
 from discord.utils import escape_markdown
 
-
 import db
 
 embed_color = discord.Color(0xed791e)
@@ -14,6 +13,7 @@ class ProfileMenus(commands.Cog):
     """
     Creates a profile menu object for the bot
     """
+
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         bot.tree.add_command(profile)
@@ -24,13 +24,23 @@ class ProfileMenus(commands.Cog):
         self.bot.tree.remove_command(onteam)
 
 
+class View_Profile(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.value = None
+
+    @discord.ui.button(style = discord.ButtonStyle.blurple, label = "View Teams", custom_id = "onteam")
+    async def onteam_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        self.value = True
+        self.stop()
+
+
 @app_commands.context_menu(name = 'View Profile')
 async def profile(interaction: discord.Interaction, member: discord.Member):
     """Creates the ephemeral response that will be sent to the user when they interact with the 'View Profile' button"""
-    # await interaction.response.send_message(f'{member} joined at {discord.utils.format_dt(member.joined_at)}',
-    # ephemeral = False)  # temp false for testing
     if member is None:
         member = interaction.user
+    teams = await TeamNumbers.get_by(user_id = member.id)
 
     icon_url = member.avatar.replace(static_format = 'png', size = 32) or None
 
@@ -49,7 +59,29 @@ async def profile(interaction: discord.Interaction, member: discord.Member):
     s = "s" if len(member.roles) >= 2 else ""
     embed.add_field(name = f"Role{s}: ", value = role_string, inline = False)
     embed.set_thumbnail(url = icon_url)
-    await interaction.response.send_message(embed = embed, ephemeral = True)
+    if len(teams) > 0:
+        embed.add_field(name = f"On {len(teams)} team{'s' if len(teams) > 1 else ''}",
+                        value = f"Click the button below to view the teams {member.mention} is on", inline = False)
+        view = View_Profile()
+        await interaction.response.send_message(embed = embed, view = view, ephemeral = True)
+        await view.wait()
+        if view.value:
+            msg = await interaction.original_response()
+            embed.remove_field(5 if member.premium_since is None else 6)
+            await msg.edit(embed = embed, view = None)
+
+            teams = await TeamNumbers.get_by(user_id = member.id)
+            onteam_embed = discord.Embed(color = discord.Color.blue())
+            onteam_embed.title = f'{member.mention} is on the following team(s):'
+            onteam_embed.description = "Teams: \n"
+            for i in teams:
+                onteam_embed.description = f"{onteam_embed.description} {i.team_type.upper()} Team {i.team_number} \n"
+            if len(onteam_embed.description) > 4000:
+                onteam_embed.description = onteam_embed.description[:4000] + "..."
+
+            await interaction.followup.send(embed = onteam_embed, ephemeral = True)
+    else:
+        await interaction.response.send_message(embed = embed, ephemeral = True)
 
 
 @app_commands.context_menu(name = 'Teams User is On')

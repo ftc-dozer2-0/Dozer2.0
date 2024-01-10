@@ -15,10 +15,11 @@ from discord.utils import escape_markdown
 
 from context import DozerContext
 from ._utils import *
+import db
 
 embed_color = discord.Color(0xed791e)
 
-__all__ = ['FTCEventsClient', 'FTCInfo', 'setup']
+__all__ = ['FTCEventsClient', 'FTCInfo', 'setup', 'TeamNumbers']
 
 
 def get_none_strip(s, key):
@@ -288,6 +289,11 @@ class FTCInfo(Cog):
                 e.add_field(name = 'Endgame OPR',
                             value = f"{team_stats['eg']['value']:.0f}, rank #{team_stats['eg']['rank']:.0f}")
 
+            if len(await TeamNumbers.get_by(team_number = team_num)) > 0:
+                num_members = len(await TeamNumbers.get_by(team_number = team_num))
+                e.set_footer(text = f"This team has at least {num_members} member{'s' if num_members > 1 else ''} in "
+                                    f"the bot's database.")
+
             await ctx.send(embed=e)
 
     team.example_usage = """
@@ -407,3 +413,38 @@ class FTCInfo(Cog):
 async def setup(bot):
     """Adds the FTC information cog to the bot."""
     await bot.add_cog(FTCInfo(bot))
+
+
+class TeamNumbers(db.DatabaseTable):
+    """Database operations for tracking team associations."""
+    __tablename__ = 'team_numbers'
+    __uniques__ = ('user_id', 'team_number', 'team_type',)
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            user_id bigint NOT NULL,
+            team_number text NOT NULL,
+            team_type VARCHAR NOT NULL,
+            PRIMARY KEY (user_id, team_number, team_type)
+            )""")
+
+    def __init__(self, user_id, team_number, team_type):
+        super().__init__()
+        self.user_id = user_id
+        self.team_number = team_number
+        self.team_type = team_type
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = TeamNumbers(user_id = result.get("user_id"),
+                              team_number = result.get("team_number"),
+                              team_type = result.get("team_type"))
+            result_list.append(obj)
+        return result_list
