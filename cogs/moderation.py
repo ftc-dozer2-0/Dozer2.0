@@ -3,13 +3,14 @@ import asyncio
 import re
 import datetime
 import time
+import traceback
+import typing
 from typing import Union
-from logging import getLogger
 
 import discord
 from discord.ext.commands import BadArgument, has_permissions, RoleConverter, guild_only
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import tasks, commands
 from discord.utils import escape_markdown
 from loguru import logger
 
@@ -21,11 +22,18 @@ from Components.TeamNumbers import TeamNumbers
 
 blurple = discord.Color.blurple()
 
+__all__ = ["SafeRoleConverter", "Moderation", "NewMemPurgeConfig", "GuildNewMember"]
+
+MAX_PURGE = 1000
+
 
 class SafeRoleConverter(RoleConverter):
     """Allows for @everyone to be specified without pinging everyone"""
 
-    async def convert(self, ctx: DozerContext, argument):
+    def __init__(self):
+        self.id = None
+
+    async def convert(self, ctx: DozerContext, argument: str):
         try:
             return await super().convert(ctx, argument)
         except BadArgument:
@@ -36,28 +44,55 @@ class SafeRoleConverter(RoleConverter):
                 raise
 
 
-# pylint: disable=too-many-public-methods
 class Moderation(Cog):
     """A cog to handle moderation tasks."""
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         super().__init__(bot)
-        self.bot = bot
         self.links_config = db.ConfigCache(GuildMessageLinks)
         self.punishment_timer_tasks = []
 
     """=== Helper functions ==="""
 
-    # todo: clean this up
+    async def nm_kick_internal(self, guild: discord.Guild = None):
+        """Kicks people who have not done the new member process within a set amount of time."""
+        logger.debug("Starting nm_kick cycle...")
+        if not guild:
+            entries = await NewMemPurgeConfig.get_by()
+        else:
+            entries = await NewMemPurgeConfig.get_by(guild_id=guild.id)
+        count = 0
+        for entry in entries:
+            guild = self.bot.get_guild(entry.guild_id)
+            if guild is None:
+                continue
+            for mem in guild.members:
+                if guild.get_role(entry.member_role) not in mem.roles:
+                    delta = datetime.datetime.now() - mem.joined_at
+                    if delta.days >= entry.days:
+                        await mem.kick(reason="New member purge cycle")
+                        count += 1
+        return count
+
+    @discord.ext.tasks.loop(hours=168)
+    async def nm_kick(self):
+        """Kicks new members"""
+        await self.nm_kick_internal()
+
     async def mod_log(self, actor: discord.Member, action: str, target: Union[discord.User, discord.Member, None],
                       reason, orig_channel=None,
                       embed_color=discord.Color.red(), global_modlog: bool = True, duration: bool = None,
-                      dm: bool = True, guild_override: int = None, extra_fields=None,
-                      updated_by: discord.Member = None):
+                      dm: bool = True, guild_override: int = None, extra_fields=None, updated_by: discord.Member = None):
         """Generates a modlog embed"""
+
+        if target is None:
+            title = "Custom Modlog"
+        else:
+            title = f"User {action}!"
+
         modlog_embed = discord.Embed(
             color=embed_color,
-            title=f"User {action}!"
+            title=title
 
         )
         if target is not None:
@@ -65,8 +100,7 @@ class Moderation(Cog):
                                    value=f"{target.mention} ({target} | {target.id})", inline=False)
         modlog_embed.add_field(name="Performed by", value=f"{actor.mention} ({actor} | {actor.id})", inline=False)
         if updated_by is not None:
-            modlog_embed.add_field(name="Updated by",
-                                   value=f"{updated_by.mention} ({updated_by} | {updated_by.id})", inline=False)
+            modlog_embed.add_field(name="Updated by", value=f"{updated_by.mention} ({updated_by} | {updated_by.id})", inline=False)
         modlog_embed.add_field(name="Reason", value=reason or "No reason specified", inline=False)
         modlog_embed.timestamp = datetime.datetime.utcnow()
         if extra_fields is not None:
@@ -74,17 +108,25 @@ class Moderation(Cog):
                 modlog_embed.add_field(name=field['name'], value=field['value'], inline=field['inline'])
         if duration:
             modlog_embed.add_field(name="Duration", value=duration)
-            modlog_embed.add_field(name="Expiration",
-                                   value=f"<t:{round((datetime.datetime.now() + duration).timestamp())}:R>")
+            modlog_embed.add_field(name="Expiration", value=f"<t:{round((datetime.datetime.now() + duration).timestamp())}:R>")
         if target is not None and dm:
             try:
                 # Add source guild after Preformed by to embed if the modlog is being sent to a DM
-                modlog_embed.insert_field_at(2, name="Source Guild",
-                                             value=f"**{actor.guild.name}** ({actor.guild.id})")
+                modlog_embed.insert_field_at(2, name="Source Guild", value=f"**{actor.guild.name}** ({actor.guild.id})")
                 await target.send(embed=modlog_embed)
                 # Remove the source guild line from the embed
             except discord.Forbidden:
-                await orig_channel.send("Failed to DM modlog to user")
+                if orig_channel is not None:
+                    await orig_channel.send("Failed to DM modlog to user")
+                else:
+                    logger.warning(f"Failed to DM modlog to user {target} ({target.id})")
+            except discord.HTTPException as e:
+                if orig_channel is not None:
+                    await orig_channel.send(f"Failed to DM modlog to user: `{e}`")
+                else:
+                    logger.warning(f"Failed to DM modlog to user {target} ({target.id}): {e}")
+            except AttributeError:
+                pass
             finally:
                 modlog_embed.remove_field(2)
         modlog_channel = await GuildModLog.get_by(guild_id=actor.guild.id) if guild_override is None else \
@@ -106,25 +148,36 @@ class Moderation(Cog):
                 await orig_channel.send("Please configure modlog channel to enable modlog functionality",
                                         ephemeral=True)
 
-    async def perm_override(self, member, **overwrites):
+    async def perm_override(self, member: discord.Member, **overwrites):
         """Applies the given overrides to the given member in their guild."""
-        coros = []
-        for channel in member.guild.channels:
+        logger.debug(f"Applying overrides to {member} ({member.id})")
+        overwrite_count = 0
+        guild = await self.bot.fetch_guild(member.guild.id)
+        channels = await guild.fetch_channels()
+        # For some reason guild.me is returning None only sometimes, so this is a workaround to get perm_overrides working
+        me = await guild.fetch_member(self.bot.user.id)
+        for channel in channels:
             overwrite = channel.overwrites_for(member)
-            perms = channel.permissions_for(member.guild.me)
-            if perms.manage_roles and perms.manage_channels:
+            if channel.permissions_for(me).manage_roles:
                 overwrite.update(**overwrites)
-                coros.append(
-                    channel.set_permissions(target=member, overwrite=None if overwrite.is_empty() else overwrite))
-        try:
-            await asyncio.gather(*coros)
-        except discord.Forbidden as e:
-            getLogger("dozer").error(f"Failed to catch missing permissions: Error ({e}")
+                try:
+                    await channel.set_permissions(target=member, overwrite=None if overwrite.is_empty() else overwrite)
+                    overwrite_count += 1
+                except discord.Forbidden as e:
+                    logger.error(
+                        f"Failed to catch missing perms in {channel} ({channel.id}) Guild: {channel.guild.id}; Error: {e}")
+                except discord.HTTPException as e:
+                    logger.error(
+                        f"Failed to catch discords horrid permissions system in "
+                        f"{channel} ({channel.id}) Guild: {channel.guild.id}; Error: {e}")
+                except Exception as e:
+                    logger.error(f"Failed to catch some unknown or unexpected error: {e}")
+            else:
+                logger.warning(f"Missing permissions to manage roles in {channel} ({channel.id})")
+        logger.debug(f"Applied {overwrite_count}/({len(channels)}) overrides to {member} ({member.id})")
 
-    # the below regex and updated hm_to_seconds were borrowed from the frc dozer as well (skhynix#1554)
-    hm_regex = re.compile(
-        r"((?P<years>\d+)y)?((?P<months>\d+)M)?((?P<weeks>\d+)w)?((?P<days>\d+)d)?((?P<hours>\d+)h)?((?P<minutes>\d+)m)?(("
-        r"?P<seconds>\d+)s)?")
+    hm_regex = re.compile(r"((?P<years>\d+)y)?((?P<months>\d+)M)?((?P<weeks>\d+)w)?((?P<days>\d+)d)?((?P<hours>\d+)h)?((?P<minutes>\d+)m)?(("
+                          r"?P<seconds>\d+)s)?")
 
     def hm_to_seconds(self, hm_str: str):
         """Converts an hour-minute string to seconds. For example, '1h15m' returns 4500"""
@@ -136,63 +189,114 @@ class Moderation(Cog):
         hours = int(matches.get('hours') or 0)
         minutes = int(matches.get('minutes') or 0)
         seconds = int(matches.get('seconds') or 0)
-        val = int((years * 3.154e+7) + (months * 2.628e+6) + (weeks * 604800) + (days * 86400) + (hours * 3600) + (
-                minutes * 60) + seconds)
+        val = int((years * 3.154e+7) + (months * 2.628e+6) + (weeks * 604800) + (days * 86400) + (hours * 3600) + (minutes * 60) + seconds)
         # Make sure it is a positive number, and it doesn't exceed the max 32-bit int
         return max(0, min(2147483647, val))
 
-    async def punishment_timer(self, seconds, target: discord.Member, punishment, reason, actor: discord.Member,
-                               orig_channel=None,
-                               global_modlog=True):
+    async def start_punishment_timers(self):
+        """Starts all punishment timers"""
+        q = await PunishmentTimerRecords.get_by()  # no filters: all
+        for r in q:
+            try:
+                guild = await self.bot.fetch_guild(r.guild_id)
+            except discord.NotFound:
+                logger.warning(f"Guild {r.guild_id} not found, skipping punishment timer")
+                continue
+            try:
+                actor = await guild.fetch_member(r.actor_id)
+            except discord.NotFound:
+                actor = None
+            try:
+                target = await guild.fetch_member(r.target_id)
+            except discord.NotFound:
+                logger.warning(f"Target {r.target_id} not found, skipping punishment timer")
+                continue
+            orig_channel = self.bot.get_channel(r.orig_channel_id)
+            punishment_type = r.type_of_punishment
+            reason = r.reason or ""
+            seconds = max(int(r.target_ts - time.time()), 0.01)
+            # await PunishmentTimerRecords.delete(id=r.id)
+            self.bot.loop.create_task(
+                self.punishment_timer(seconds, target, PunishmentTimerRecords.type_map[punishment_type], reason, actor,
+                                      orig_channel, timer_id=r.id))
+            logger.info(
+                f"Restarted {PunishmentTimerRecords.type_map[punishment_type].__name__} of {target} in {guild}")
+
+    async def restart_all_timers(self):
+        """Restarts all timers"""
+        logger.info("Restarting all timers")
+        for timer in self.punishment_timer_tasks:
+            # timer: asyncio.Task
+            logger.info(f"Stopping \"{timer.get_name()}\"")
+        for timer in self.punishment_timer_tasks:
+            timer.cancel()
+        self.punishment_timer_tasks = []
+        await self.start_punishment_timers()
+
+    async def punishment_timer(self, seconds: int, target: discord.Member, punishment, reason: str,
+                               actor: discord.Member, orig_channel=None,
+                               global_modlog: bool = True, timer_id: int = None):
         """Asynchronous task that sleeps for a set time to unmute/undeafen a member for a set period of time."""
+
+        # Add this task to the list of active timer tasks
+        asyncio.current_task().set_name(f"PunishmentTimer for {target}")
+        self.punishment_timer_tasks.append(asyncio.current_task())
+
+        logger.info(f"Starting{' self' if not global_modlog else ''} {punishment.__name__} timer of \"{target}\" in \"{target.guild}\" will "
+                    f"expire in {seconds} seconds")
+
         if seconds == 0:
             return
 
-        # register the timer
-        ent = PunishmentTimerRecords(
-            guild_id=target.guild.id,
-            actor_id=actor.id,
-            target_id=target.id,
-            orig_channel_id=orig_channel.id if orig_channel else 0,
-            type=punishment.type,
-            reason=reason,
-            target_ts=int(seconds + time.time()),
-            send_modlog=global_modlog
-        )
-        ent_id = await ent.insert()
+        if timer_id is None:
+            # register the timer
+            ent = PunishmentTimerRecords(
+                guild_id=target.guild.id,
+                actor_id=actor.id,
+                target_id=target.id,
+                orig_channel_id=orig_channel.id if orig_channel else 0,
+                type_of_punishment=punishment.type,
+                reason=reason,
+                target_ts=int(seconds + time.time()),
+                self_inflicted=not global_modlog
+            )
+            await ent.update_or_add()
+        else:
+            ent = (await PunishmentTimerRecords.get_by(id=timer_id))[0]
+            # seconds = max(int(ent.target_ts - time.time()), 0.01)
 
         await asyncio.sleep(seconds)
+        logger.info(f"Finished{' self' if not global_modlog else ''} {punishment.__name__} "
+                    f"timer of \"{target}\" in \"{target.guild}\", preforming un-punishment")
 
-        user = await punishment.select_one(member_id=target.id, guild_id=target.guild.id)
-        if user is not None:
-            await self.mod_log(actor,
-                               "un" + punishment.past_participle,
-                               target,
-                               reason,
-                               orig_channel,
-                               embed_color=discord.Color.green(),
-                               global_modlog=global_modlog)
-            self.bot.loop.create_task(punishment.finished_callback(self, target))
-        ent = await PunishmentTimerRecords.select_one(id=ent_id)
-        if ent:
-            await ent.delete()
+        user = await punishment.get_by(member_id=target.id)
+        try:
+            if len(user) != 0:
+                await self.mod_log(actor=actor,
+                                   action="un" + punishment.past_participle,
+                                   target=target,
+                                   reason=reason,
+                                   orig_channel=orig_channel,
+                                   embed_color=discord.Color.green(),
+                                   global_modlog=global_modlog)
+                self.punishment_timer_tasks.remove(asyncio.current_task())
+                self.bot.loop.create_task(coro=punishment.finished_callback(self, target))
+            else:
+                logger.warning(f"User {target} was not found in the {punishment.__name__} database, skipping un-punishment")
 
-    async def _check_links_warn(self, msg, role):
+            if ent:
+                await PunishmentTimerRecords.delete(guild_id=target.guild.id, target_id=target.id,
+                                                    type_of_punishment=punishment.type)
+        except Exception as e:
+            logger.error(f"Error while un-punishing {target} in {target.guild}, {e}")
+            logger.exception(e)
+
+    async def _check_links_warn(self, msg: discord.Message, role: discord.Role):
         """Warns a user that they can't send links."""
-        await msg.channel.send(f"{msg.author.mention}, you need the `{role.name}` role to post links!", ephemeral=True)
+        warn_msg = await msg.channel.send(f"{msg.author.mention}, you need the `{role.name}` role to post links!", delete_after=3)
 
-    async def check_links(self, msg):
-        """Checks messages for the links role if necessary, then checks if the author is allowed to send links in the
-        server"""
-        if msg.guild is None or not isinstance(msg.author,
-                                               discord.Member) or not msg.guild.me.guild_permissions.manage_messages:
-            return
-
-        # this is a dirty hack
-        # (let people post links in #robotics-help, #media, #robot-showcase)
-        if msg.channel.id in [676583549561995274, 771188718198456321, 761068471252680704]:
-            return
-
+    async def check_links(self, msg: discord.Message):
+        """Checks messages for the links role if necessary, then checks if the author is allowed to send links in the server"""
         if msg.guild is None or not isinstance(msg.author,
                                                discord.Member) or not msg.guild.me.guild_permissions.manage_messages:
             return
@@ -208,17 +312,34 @@ class Moderation(Cog):
             return True
         return False
 
-    async def check_talking_showcase(self, msg):
-        """Checks for messages sent in #robot-showcase without attachments or embeds and automatically deletes them."""
-        if (
-                msg.channel.id == 771188718198456321 or msg.channel.id == 676583549561995274) and not msg.attachments and not msg.embeds and not re.search(
-            "https?://", msg.content):
-            await msg.delete()
+    async def run_cross_ban(self, ctx: DozerContext, user: discord.User, reason: str):
+        """Checks for guilds that are subscribed to the banned members guild"""
+        subscriptions = await CrossBanSubscriptions.get_by(subscription_id=ctx.guild.id)
+        bans = []
+        for subscription in subscriptions:
+            sub_guild = self.bot.get_guild(subscription.subscriber_id)
+            if sub_guild:
+                modlog_channel = await GuildModLog.get_by(guild_id=sub_guild.id)
+                try:
+                    await sub_guild.ban(user, reason=f"User Cross Banned from \"{ctx.guild}\" for: {reason}")
+                    if modlog_channel:
+                        await self.mod_log(actor=ctx.message.author, action="crossbanned", target=user, reason=reason,
+                                           dm=False,
+                                           guild_override=sub_guild.id,
+                                           extra_fields=[
+                                               {"name": "Origin Guild", "value": f"**{ctx.guild}** ({ctx.guild.id})",
+                                                "inline": False}])
+                except discord.Forbidden:
+                    continue
+
+                bans.append(sub_guild)
+
+        return bans
 
     """=== context-free backend functions ==="""
 
-    async def _mute(self, member: discord.Member, reason: str = "No reason provided", seconds=0, actor=None,
-                    orig_channel=None):
+    async def _mute(self, member: discord.Member, reason: str = "No reason provided", seconds: int = 0,
+                    actor: discord.Member = None, orig_channel=None):
         """Mutes a user.
         member: the member to be muted
         reason: a reason string without a time specifier
@@ -228,18 +349,15 @@ class Moderation(Cog):
         """
         results = await Mute.get_by(guild_id=member.guild.id, member_id=member.id)
         if results:
-            await PunishmentTimerRecords.delete(target_id=member.id, guild_id=member.guild.id,
-                                                type_of_punishment=Mute.type)
+            await PunishmentTimerRecords.delete(target_id=member.id, guild_id=member.guild.id, type_of_punishment=Mute.type)
             await self.restart_all_timers()
             self.bot.loop.create_task(
-                self.punishment_timer(seconds, member, Mute, reason, actor or member.guild.me,
-                                      orig_channel=orig_channel))
+                self.punishment_timer(seconds, member, Mute, reason, actor or member.guild.me, orig_channel=orig_channel))
             return False  # member already muted, edit preexisting record
         else:
             user = Mute(member_id=member.id, guild_id=member.guild.id)
             await user.update_or_add()
-            await self.perm_override(member, send_messages=False, add_reactions=False, speak=False,
-                                     stream=False,
+            await self.perm_override(member, send_messages=False, add_reactions=False, speak=False, stream=False,
                                      create_public_threads=False, create_private_threads=False)
 
             self.bot.loop.create_task(
@@ -274,8 +392,7 @@ class Moderation(Cog):
         """
         results = await Deafen.get_by(guild_id=member.guild.id, member_id=member.id)
         if results:
-            await PunishmentTimerRecords.delete(target_id=member.id, guild_id=member.guild.id,
-                                                type_of_punishment=Deafen.type)
+            await PunishmentTimerRecords.delete(target_id=member.id, guild_id=member.guild.id, type_of_punishment=Deafen.type)
 
             await self.restart_all_timers()
             self.bot.loop.create_task(
@@ -322,82 +439,7 @@ class Moderation(Cog):
     async def on_ready(self):
         """Restore punishment timers on bot startup and trigger the nm purge cycle"""
         await self.start_punishment_timers()
-
-    async def start_punishment_timers(self):
-        """Starts all punishment timers"""
-        q = await PunishmentTimerRecords.get_by()  # no filters: all
-        for r in q:
-            guild = self.bot.get_guild(r.guild_id)
-            actor = guild.get_member(r.actor_id)
-            target = guild.get_member(r.target_id)
-            orig_channel = self.bot.get_channel(r.orig_channel_id)
-            punishment_type = r.type_of_punishment
-            reason = r.reason or ""
-            seconds = max(int(r.target_ts - time.time()), 0.01)
-            await PunishmentTimerRecords.delete(id=r.id)
-            self.bot.loop.create_task(
-                self.punishment_timer(seconds, target, PunishmentTimerRecords.type_map[punishment_type], reason, actor,
-                                      orig_channel))
-            logger.info(
-                f"Restarted {PunishmentTimerRecords.type_map[punishment_type].__name__} of {target} in {guild}")
-
-    async def restart_all_timers(self):
-        """Restarts all timers"""
-        logger.info("Restarting all timers")
-        for timer in self.punishment_timer_tasks:
-            # timer: asyncio.Task
-            logger.info(f"Stopping \"{timer.get_name()}\"")
-        for timer in self.punishment_timer_tasks:
-            timer.cancel()
-        self.punishment_timer_tasks = []
-        await self.start_punishment_timers()
-
-    async def punishment_timer(self, seconds: int, target: discord.Member, punishment, reason: str,
-                               actor: discord.Member, orig_channel=None,
-                               global_modlog: bool = True):
-        """Asynchronous task that sleeps for a set time to unmute/undeafen a member for a set period of time."""
-
-        # Add this task to the list of active timer tasks
-        asyncio.current_task().set_name(f"PunishmentTimer for {target}")
-        self.punishment_timer_tasks.append(asyncio.current_task())
-
-        logger.info(
-            f"Starting{' self' if not global_modlog else ''} {punishment.__name__} timer of \"{target}\" in \"{target.guild}\" will "
-            f"expire in {seconds} seconds")
-
-        if seconds == 0:
-            return
-
-        # register the timer
-        ent = PunishmentTimerRecords(
-            guild_id=target.guild.id,
-            actor_id=actor.id,
-            target_id=target.id,
-            orig_channel_id=orig_channel.id if orig_channel else 0,
-            type_of_punishment=punishment.type,
-            reason=reason,
-            target_ts=int(seconds + time.time()),
-            self_inflicted=not global_modlog
-        )
-        await ent.update_or_add()
-
-        await asyncio.sleep(seconds)
-
-        user = await punishment.get_by(member_id=target.id)
-        if len(user) != 0:
-            await self.mod_log(actor=actor,
-                               action="un" + punishment.past_participle,
-                               target=target,
-                               reason=reason,
-                               orig_channel=orig_channel,
-                               embed_color=discord.Color.green(),
-                               global_modlog=global_modlog)
-
-            self.punishment_timer_tasks.remove(asyncio.current_task())
-            self.bot.loop.create_task(coro=punishment.finished_callback(self, target))
-        if ent:
-            await PunishmentTimerRecords.delete(guild_id=target.guild.id, target_id=target.id,
-                                                type_of_punishment=punishment.type)
+        await self.nm_kick.start()
 
     @Cog.listener('on_member_join')
     async def on_member_join(self, member: discord.Member):
@@ -409,19 +451,6 @@ class Moderation(Cog):
         if users:
             await self.perm_override(member, read_messages=False)
 
-    @Cog.listener()
-    async def on_member_remove(self, member):
-        """Logs that a member left."""
-        leave = discord.Embed(type='rich', color=0xFF0000)
-        leave.set_author(name='Member Left', icon_url=member.avatar.replace(static_format = 'png', size = 32) or None)
-        leave.description = "{0.mention}\n{0} ({0.id})".format(member)
-        leave.set_footer(text="{} | {} members".format(member.guild.name, member.guild.member_count))
-
-        config = await self.guild_config.query_one(guild_id=member.guild.id)
-        if config is not None and config.member_log_channel_id is not None:
-            channel = member.guild.get_channel(config.member_log_channel_id)
-            await channel.send(embed=leave)
-
     @Cog.listener('on_message')
     async def on_message(self, message: discord.Message):
         """Check things when messages come in."""
@@ -429,8 +458,6 @@ class Moderation(Cog):
             return
         if await self.check_links(message):
             return
-        if message.type == discord.MessageType.thread_created:
-            await message.delete()
         config = await GuildNewMember.get_by(guild_id=message.guild.id)
         ctx = await self.bot.get_context(message)
         if len(config) != 0:
@@ -457,178 +484,41 @@ class Moderation(Cog):
             if custom_log_config[0].send_on_verify:
                 await send_log(member=message.author)
 
-    @Cog.listener()
-    async def on_message_delete(self, message):
-        """When a message is deleted, log it."""
-        if self.bot.user == message.author or not message.guild:
-            return
-        e = discord.Embed(type='rich', title='Message Deleted', color=0xff0000)
-        e.timestamp = datetime.datetime.utcnow()
-        e.set_author(name=f"{message.author} in #{message.channel}", icon_url=message.author.avatar.replace(static_format = 'png', size = 32) or None)
-        e.add_field(name='Channel link', value=message.channel.mention)
-        e.add_field(name='Author pingable', value=message.author.mention)
-
-        if len(message.content) > 0:
-            e.description = message.content
-        elif len(message.content) == 0:
-            for i in message.embeds:
-                e.add_field(name="Title", value=i.title)
-                e.add_field(name="Description", value=i.description)
-                e.add_field(name="Timestamp", value=i.timestamp)
-                for x in i.fields:
-                    e.add_field(name=x.name, value=x.value)
-                e.add_field(name="Footer", value=i.footer)
-        if message.attachments:
-            e.add_field(name="Attachments", value=", ".join([i.url for i in message.attachments]))
-
-        config = await self.guild_config.query_one(guild_id=message.guild.id)
-        if config is not None and config.message_log_channel_id is not None:
-            channel = message.guild.get_channel(config.message_log_channel_id)
-            if channel is not None:
-                await channel.send(embed=e)
-
-    @Cog.listener()
-    async def on_message_edit(self, before, after):
-        """Logs message edits."""
+    @Cog.listener('on_message_edit')
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        """Checks for links"""
         await self.check_links(after)
-        if before.author.bot or not before.guild:
-            return
-        if after.edited_at is not None or before.edited_at is not None:
-            # There is a reason for this. That reason is that otherwise, an infinite spam loop occurs
-            e = discord.Embed(type='rich', title='Message Edited', color=0xffc400)
-            e.timestamp = after.edited_at
-            e.set_author(name=f"{before.author} in #{before.channel}", icon_url=before.author.avatar.replace(static_format = 'png', size = 32) or None)
-
-            if 1024 > len(before.content) > 0:
-                e.add_field(name="Old message", value=before.content)
-            elif len(before.content) != 0:
-                e.add_field(name="Old message", value=before.content[0:1023])
-                e.add_field(name="Old message continued", value=before.content[1024:2000])
-            elif len(before.content) == 0 and before.edited_at is not None:
-                for i in before.embeds:
-                    e.add_field(name="Title", value=i.title)
-                    e.add_field(name="Description", value=i.description)
-                    e.add_field(name="Timestamp", value=i.timestamp)
-                    for x in i.fields:
-                        e.add_field(name=x.name, value=x.value)
-                    e.add_field(name="Footer", value=i.footer)
-            if before.attachments:
-                e.add_field(name="Attachments", value=", ".join([i.url for i in before.attachments]))
-            if 0 < len(after.content) < 1024:
-                e.add_field(name="New message", value=after.content)
-            elif len(after.content) != 0:
-                e.add_field(name="New message", value=after.content[0:1023])
-                e.add_field(name="New message continued", value=after.content[1024:2000])
-            elif len(after.content) == 0 and after.edited_at is not None:
-                for i in after.embeds:
-                    e.add_field(name="Title", value=i.title)
-                    e.add_field(name="Description", value=i.description)
-                    e.add_field(name="Timestamp", value=i.timestamp)
-                    for x in i.fields:
-                        e.add_field(name=x.name, value=x.value)
-            if after.attachments:
-                e.add_field(name="Attachments", value=", ".join([i.url for i in before.attachments]))
-            e.add_field(name='Channel link', value=before.channel.mention)
-            e.add_field(name='Author pingable', value=before.author.mention)
-
-            config = await self.guild_config.query_one(guild_id=before.guild.id)
-            if config is not None and config.message_log_channel_id is not None:
-                channel = before.guild.get_channel(config.message_log_channel_id)
-                if channel is not None:
-                    await channel.send(embed=e)
 
     """=== Direct moderation commands ==="""
 
-    @commands.hybrid_command(aliases=["warning"])
+    @command()
     @has_permissions(kick_members=True)
-    @app_commands.describe(member="The member to warn", reason="The reason for the warning")
-    async def warn(self, ctx, member: discord.Member, *, reason):
+    async def warn(self, ctx: DozerContext, member: discord.Member, *, reason: str):
         """Sends a message to the mod log specifying the member has been warned without punishment."""
-        await self.mod_log(actor=ctx.author, action="warned", target=member, orig_channel=ctx.channel,
-                           reason=reason)
+        orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+        await self.mod_log(actor=ctx.author, action="warned", target=member, orig_channel=orig_channel, reason=reason)
 
     warn.example_usage = """
-    `{prefix}warn @user reason` - warns a user for "reason"
+    `{prefix}`warn @user reason - warns a user for "reason"
     """
 
-    @commands.hybrid_command(aliases=["purge", "clear"])
-    @has_permissions(manage_messages=True)
-    @bot_has_permissions(manage_messages=True, read_message_history=True)
-    @app_commands.describe(num_to_delete="The amount of messages to delete")
-    async def prune(self, ctx, num_to_delete: int):
-        """Bulk delete a set number of messages from the current channel."""
-        if num_to_delete > 100:
-            await ctx.send("Cannot purge more than 100 messages!")
-            return
+    @command()
+    @has_permissions(kick_members=True)
+    @app_commands.describe(reason="The reason you want to see in mod-logs")
+    async def customlog(self, ctx: DozerContext, *, reason: str):
+        """Sends a message to the mod log with custom text."""
+        orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+        await self.mod_log(actor=ctx.author, action="", target=None, orig_channel=orig_channel, reason=reason,
+                           embed_color=0xFFC400)
 
-        await ctx.message.channel.purge(limit=num_to_delete + 1)
-        await ctx.send(
-            "Deleted {n} messages under request of {user}".format(n=num_to_delete, user=ctx.message.author.mention),
-            delete_after=5)
-
-    prune.example_usage = """
-    `{prefix}prune 10` - Delete the last 10 messages in the current channel.
+    customlog.example_usage = """
+    `{prefix}`customlog reason - warns a user for "reason"
     """
 
-    @command(aliases=["clearreacts"])
-    @has_permissions(manage_messages=True)
-    @bot_has_permissions(manage_messages=True)
-    @app_commands.describe(message_id="The message to clear reactions from",
-                           channel="(optional) The channel the message is in")
-    async def clearreactions(self, ctx, message_id: int, channel: discord.TextChannel = None):
-        """Clear the reactions from a message, given its id and optionally a channel."""
-        chn = channel or ctx.channel
-        try:
-            message = await chn.fetch_message(message_id)
-        except discord.NotFound:
-            await ctx.send(f"Message {message_id} not found in channel {chn.mention}!")
-            return
-        await message.clear_reactions()
-        await ctx.send(f"Cleared reactions from message {message_id}")
-
-    clearreactions.example_usage = """
-    `{prefix}clearreactions 481021088046907392 #general` - clear all reactions from messageid 481021088046907392 in #general
-    """
-
-    @commands.hybrid_command(aliases=["bulkclearreacts"])
-    @has_permissions(manage_messages=True)
-    @bot_has_permissions(manage_messages=True)
-    @app_commands.describe(num_to_clear="The number of messages to clear reactions from",
-                           channel="(optional) The channel to clear reactions from")
-    async def bulkclearreactions(self, ctx, num_to_clear: int, channel: discord.TextChannel = None):
-        """Clears the reactions of the last x messages in a channel"""
-        chn = channel or ctx.channel
-        async for message in chn.history(limit=num_to_clear):
-            await message.clear_reactions()
-        await ctx.send(f"Cleared reactions on {num_to_clear} messages in {chn.mention}")
-
-    bulkclearreactions.example_usage = """
-    `{prefix}bulkclearreactions 50 #general` - clear all reactions from the last 50 messages in #general
-    """
-
-    # this is all already underneath the class, moderation
-
-    @commands.hybrid_group(name="channel", invoke_without_command=True, case_insensitive=True)
-    async def channel_group(self, ctx):
-        """Manages channel settings."""
-        await ctx.send_help(ctx.command)
-
-    @channel_group.command(name="slowmode")
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_channels=True)
-    async def slowmode(self, ctx, slowmode_delay: int):
-        """Set the slowmode message delay for the current channel. Passing 0 disables slowmode."""
-        await ctx.channel.edit(slowmode_delay=slowmode_delay,
-                               reason=f"Adjusted slowmode at request of {ctx.author}")
-
-    slowmode.example_usage = """
-    `{prefix}slowmode 20` - set slowmode to 20 seconds per message per user
-    """
-
-    @channel_group.command(name="timeout")
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @app_commands.describe(duration="The duration of the timeout in seconds")
+    @command()
+    @has_permissions(manage_permissions=True)
+    @bot_has_permissions(manage_permissions=True)
+    @app_commands.describe(duration="Duration in seconds to timeout the channel")
     async def timeout(self, ctx: DozerContext, duration: float):
         """Set a timeout (no sending messages or adding reactions) on the current channel."""
         settings = await MemberRole.get_by(guild_id=ctx.guild.id)
@@ -660,12 +550,10 @@ class Moderation(Cog):
             await ctx.channel.set_permissions(allow_target, overwrite=new_overwrite)
             to_restore.append((allow_target, overwrite))
 
-        e = discord.Embed(title=f'Timeout - {duration}s', description='This channel has been timed out.',
+        e = discord.Embed(title=f'Timeout - {duration}s', description='This channel has been timed out. Do not timeout the channel again until current timeout has ended.',
                           color=discord.Color.blue())
-        e.set_author(name=escape_markdown(ctx.author.display_name),
-                     icon_url=ctx.author.display_avatar.replace(format='png', size=32))
+        e.set_author(name=escape_markdown(ctx.author.display_name), icon_url=ctx.author.display_avatar.replace(format='png', size=32))
         msg = await ctx.send(embed=e)
-
 
         await asyncio.sleep(duration)
 
@@ -678,200 +566,45 @@ class Moderation(Cog):
         e.description = 'The timeout has ended.'
         await msg.edit(embed=e)
 
-
     timeout.example_usage = """
-           `{prefix}timeout 60` - prevents sending messages in this channel for 1 minute (60s)
-           """
-
-    @command(aliases=["eject"])
-    @guild_only()
-    @has_permissions(ban_members=True)
-    @bot_has_permissions(ban_members=True)
-    @app_commands.describe(user_mention="The user to ban", reason="(optional) The reason for the ban")
-    async def ban(self, ctx, user_mention: discord.User, *, reason="No reason provided"):
-        """Bans the user mentioned."""
-        member = ctx.guild.get_member(user_mention.id)
-        if member and member.top_role >= ctx.guild.me.top_role:
-            await ctx.send(f"{ctx.author.mention}, this user's top role is the same as or higher than mine!")
-            return
-        await self.mod_log(actor=ctx.author, action="banned", target=user_mention, reason=reason,
-                           orig_channel=ctx.channel)
-        await ctx.guild.ban(user_mention, reason=reason, delete_message_days=0)
-
-    ban.example_usage = """
-    `{prefix}ban @user reason` - ban @user for a given (optional) reason
+    `{prefix}timeout 60` - prevents sending messages in this channel for 1 minute (60s)
     """
 
-    @commands.hybrid_command()
-    @has_permissions(ban_members=True)
-    @bot_has_permissions(ban_members=True)
-    @app_commands.describe(user_mention="The user to unban", reason="(optional) The reason for the unban")
-    async def unban(self, ctx, user_mention: discord.User, *, reason="No reason provided"):
-        """Unbans the user mentioned."""
-        await ctx.guild.unban(user_mention, reason=reason)
-        await self.mod_log(actor=ctx.author, action="unbanned", target=user_mention, reason=reason,
-                           orig_channel=ctx.channel, embed_color=discord.Color.green())
+    @command(aliases=["purge"])
+    @has_permissions(manage_messages=True)
+    @bot_has_permissions(manage_messages=True, read_message_history=True)
+    @app_commands.describe(num="The number of messages to prune")
+    async def prune(self, ctx: DozerContext, target: typing.Optional[discord.Member], num: int):
+        """Bulk delete a set number of messages from the current channel."""
+        await ctx.defer()
 
-    unban.example_usage = """
-    `{prefix}unban user_id reason` - unban the user corresponding to the ID for a given (optional) reason
-    """
-
-    @commands.hybrid_command(aliases=["dropkick", "boot"])
-    @has_permissions(kick_members=True)
-    @bot_has_permissions(kick_members=True)
-    @app_commands.describe(user_mention="The user to kick", reason="(optional) The reason for the kick")
-    async def kick(self, ctx, user_mention: discord.User, *, reason="No reason provided"):
-        """Kicks the user mentioned."""
-        member = ctx.guild.get_member(user_mention.id)
-        if member and member.top_role >= ctx.guild.me.top_role:
-            await ctx.send(f"{ctx.author.mention}, this user's top role is the same as or higher than mine!")
-            return
-        await self.mod_log(actor=ctx.author, action="kicked", target=user_mention, reason=reason,
-                           orig_channel=ctx.channel)
-        await ctx.guild.kick(user_mention, reason=reason)
-
-    kick.example_usage = """
-    `{prefix}kick @user reason` - kick @user for a given (optional) reason
-    """
-
-    @commands.hybrid_command(aliases=["muteuser", "silence"])
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @app_commands.describe(member_mentions="The user to mute", reason="(optional) The reason for the mute")
-    async def mute(self, ctx, member_mentions: discord.Member, *, reason="No reason provided"):
-        """Mute a user to prevent them from sending messages"""
-        async with ctx.typing():
-            seconds = self.hm_to_seconds(reason)
-            reason = self.hm_regex.sub(reason, "") or "No reason provided"
-            if await self._mute(member_mentions, reason=reason, seconds=seconds, actor=ctx.author,
-                                orig_channel=ctx.channel):
-                await self.mod_log(ctx.author, "muted", member_mentions, reason, ctx.channel, discord.Color.red())
+        def check_target(message):
+            if target is None:
+                return True
             else:
-                await ctx.send("Member is already muted!")
+                return message.author == target
 
-    mute.example_usage = """
-    `{prefix}mute @user 1h reason` - mute @user for 1 hour for a given reason, the timing component (1h) and reason is optional.
-    """
-
-    @commands.hybrid_command(aliases=["unmuteuser", "unsilence"])
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @app_commands.describe(member_mentions="The user to unmute", reason="(optional) The reason for the unmute")
-    async def unmute(self, ctx, member_mentions: discord.Member, reason="No reason provided"):
-        """Unmute a user to allow them to send messages again."""
-        async with ctx.typing():
-            if await self._unmute(member_mentions):
-                await self.mod_log(actor=ctx.author, action="unmuted", target=member_mentions, reason=reason,
-                                   orig_channel=ctx.channel, embed_color=discord.Color.green())
-            else:
-                await ctx.send("Member is not muted!")
-
-    unmute.example_usage = """
-    `{prefix}unmute @user reason` - unmute @user for a given (optional) reason
-    """
-
-    @commands.hybrid_command()
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @app_commands.describe(member_mentions="User to deafen", reason="(optional) The reason for the deafen")
-    async def deafen(self, ctx, member_mentions: discord.Member, *, reason="No reason provided"):
-        """Deafen a user to prevent them from both sending messages but also reading messages."""
-        async with ctx.typing():
-            seconds = self.hm_to_seconds(reason)
-            reason = self.hm_regex.sub(reason, "") or "No reason provided"
-            if await self._deafen(member_mentions, reason, seconds=seconds, self_inflicted=False,
-                                  actor=ctx.author, orig_channel=ctx.channel):
-                await self.mod_log(ctx.author, "deafened", member_mentions, reason, ctx.channel, discord.Color.red())
-            else:
-                await ctx.send("Member is already deafened!")
-
-    deafen.example_usage = """
-    `{prefix}deafen @user 1h reason` - deafen @user for 1 hour for a given reason, the timing component (1h) is optional.
-    """
-
-    @commands.hybrid_command()
-    @bot_has_permissions(manage_roles=True)
-    @app_commands.describe(reason="(optional) The reason for deafening yourself")
-    async def selfdeafen(self, ctx, *, reason="No reason provided"):
-        """Prevent yourself from both sending and reading messages; Useful as a study tool"""
-        async with ctx.typing():
-            seconds = self.hm_to_seconds(reason)
-
-            if seconds == 0:
-                await ctx.send("You need to specify a duration!")
+        try:
+            msg = await ctx.message.channel.fetch_message(num)
+            deleted = await ctx.message.channel.purge(after=msg, limit=MAX_PURGE, check=check_target)
+            await ctx.send(
+                f"Deleted {len(deleted)} messages under request of {ctx.message.author.mention}",
+                delete_after=5)
+        except discord.NotFound:
+            if num > MAX_PURGE:
+                await ctx.send("Message cannot be found or you're trying to purge too many messages.")
                 return
+            deleted = await ctx.message.channel.purge(limit=num + 1, check=check_target)
+            await ctx.send(
+                f"Deleted {len(deleted) - 1} messages under request of {ctx.message.author.mention}",
+                delete_after=5)
 
-            reason = self.hm_regex.sub(reason, "") or "No reason provided"
-            if await self._deafen(ctx.author, reason, seconds=seconds, self_inflicted=True, actor=ctx.author,
-                                  orig_channel=ctx.channel):
-                await self.mod_log(ctx.author, "deafened", ctx.author, reason, ctx.channel, discord.Color.red(),
-                                   global_modlog=False)
-            else:
-                await ctx.send("You are already deafened!", ephemeral=True)
-
-    selfdeafen.example_usage = """
-    `{prefix}selfdeafen time (1h5m, both optional) reason` - deafens you if you need to get work done
+    prune.example_usage = """
+    `{prefix}prune 10` - Delete the last 10 messages in the current channel.
+    `{prefix}prune 786324930378727484` - Deletes all messages up to that message ID
     """
 
-    @commands.hybrid_command()
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @app_commands.describe(member_mentions="User to undeafen", reason="(optional) The reason for undeafening")
-    async def undeafen(self, ctx, member_mentions: discord.Member, reason="No reason provided"):
-        """Undeafen a user to allow them to see message and send message again."""
-        async with ctx.typing():
-            if await self._undeafen(member_mentions):
-                await self.mod_log(actor=ctx.author, action="undeafened", target=member_mentions, reason=reason,
-                                   orig_channel=ctx.channel, embed_color=discord.Color.green())
-            else:
-                await ctx.send("Member is not deafened!")
-
-    undeafen.example_usage = """
-    `{prefix}undeafen @user reason` - undeafen @user for a given (optional) reason
-    """
-
-    @commands.hybrid_command()
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @app_commands.describe(member_mentions="User to undeafen", reason="(optional) The reason for silent undeafen")
-    async def silentundeafen(self, ctx, member_mentions: discord.Member, reason="No reason provided"):
-        """Undeafen a user to allow them to see message and send message again, without modlog post"""
-        async with ctx.typing():
-            if await self._undeafen(member_mentions):
-                await self.mod_log(actor=ctx.author, action="undeafened", target=member_mentions, reason=reason,
-                                   orig_channel=ctx.channel, embed_color=discord.Color.green(),
-                                   global_modlog=False)
-            else:
-                await ctx.send("Member is not deafened!", ephemeral=True)
-
-    silentundeafen.example_usage = """
-    `{prefix}silentundeafen @user reason` - undeafen @user for a given (optional) reason, without sending it to global modlogs
-    """
-
-    @commands.hybrid_command()
-    @has_permissions(manage_roles=True)
-    @bot_has_permissions(manage_roles=True)
-    @app_commands.describe(member="User to kick", reason="(optional) The reason for kicking")
-    async def voicekick(self, ctx, member: discord.Member, reason="No reason provided"):
-        """Kick a user from voice chat. This is most useful if their perms to rejoin have already been removed."""
-        async with ctx.typing():
-            if member.voice is None:
-                await ctx.send("User is not in a voice channel!")
-                return
-            if not member.voice.channel.permissions_for(ctx.author).move_members:
-                await ctx.send("You do not have permission to do this!")
-                return
-            if not member.voice.channel.permissions_for(ctx.me).move_members:
-                await ctx.send("I do not have permission to do this!")
-                return
-            await member.edit(voice_channel=None, reason=reason)
-            await ctx.send(f"{member} has been kicked from voice chat.")
-
-    voicekick.example_usage = """
-    `{prefix}voicekick @user reason` - kick @user out of voice
-    """
-
-    @commands.hybrid_command()
+    @command()
     @guild_only()
     @has_permissions(manage_roles=True)
     async def punishments(self, ctx: DozerContext):
@@ -922,98 +655,215 @@ class Moderation(Cog):
         await ctx.send(embed=embed)
 
     punishments.example_usage = """
-       `{prefix}punishments:` Lists currently active punishments in current guild
-       """
+    `{prefix}punishments:` Lists currently active punishments in current guild
+    """
+
+    @command(aliases=["eject"])
+    @has_permissions(ban_members=True)
+    @bot_has_permissions(ban_members=True)
+    @app_commands.describe(user_mention="The user to ban", reason="(optional) The reason for the ban")
+    async def ban(self, ctx: DozerContext, user_mention: discord.User, *, reason: str = "No reason provided"):
+        """Bans the user mentioned."""
+        await ctx.defer()
+        try:
+            orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+            await self.mod_log(actor=ctx.author, action="banned", target=user_mention, reason=reason,
+                               orig_channel=orig_channel, dm=False)
+            cross_guilds = await self.run_cross_ban(ctx, user_mention, reason)
+            extra_fields = [{"name": "Origin Guild", "value": f"**{ctx.guild}** ({ctx.guild.id})", "inline": False}]
+            for field_number, guilds in enumerate(chunk(cross_guilds, 10)):
+                extra_fields.append(
+                    {"name": "Cross Banned From", "value": '\n'.join(f"**{guild}** ({guild.id})" for guild in guilds),
+                     "inline": False})
+            await self.mod_log(actor=ctx.author, action="banned", target=user_mention, reason=reason, global_modlog=False,
+                               extra_fields=extra_fields, orig_channel=ctx.channel)
+        except Exception as e:
+            await ctx.send(f"A modlog exception occurred: {e}, user was still banned.")
+        await ctx.guild.ban(user_mention, reason=reason)
+
+    ban.example_usage = """
+    `{prefix}ban @user reason - ban @user for a given (optional) reason
+    """
+
+    @command()
+    @has_permissions(ban_members=True)
+    @bot_has_permissions(ban_members=True)
+    @app_commands.describe(user_mention="The user to unban", reason="(optional) The reason for the unban")
+    async def unban(self, ctx, user_mention: discord.User, *, reason="No reason provided"):
+        """Unbans the user mentioned."""
+        orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+        await ctx.guild.unban(user_mention, reason=reason)
+        await self.mod_log(actor=ctx.author, action="unbanned", target=user_mention, reason=reason,
+                           orig_channel=orig_channel, embed_color=discord.Color.green())
+
+    unban.example_usage = """
+    `{prefix}unban user_id reason - unban the user corresponding to the ID for a given (optional) reason
+    """
+
+    @command(aliases=["dropkick", "boot", "👢"])
+    @has_permissions(kick_members=True)
+    @bot_has_permissions(kick_members=True)
+    @app_commands.describe(user_mention="The user to kick", reason="(optional) The reason for the kick")
+    async def kick(self, ctx, user_mention: discord.User, *, reason="No reason provided"):
+        """Kicks the user mentioned."""
+        try:
+            orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+            await self.mod_log(actor=ctx.author, action="kicked", target=user_mention, reason=reason,
+                               orig_channel=orig_channel)
+        except Exception as e:
+            await ctx.send(f"A modlog exception occurred: {e}, user was still kicked.")
+        await ctx.guild.kick(user_mention, reason=reason)
+
+    kick.example_usage = """
+    `{prefix}kick @user reason - kick @user for a given (optional) reason
+    """
+
+    @command(aliases=["muteuser", "silence"])
+    @has_permissions(manage_roles=True)
+    @bot_has_permissions(manage_permissions=True)
+    @app_commands.describe(member_mentions="The user to mute", reason="(optional) The reason for the mute")
+    async def mute(self, ctx: DozerContext, member_mentions: discord.Member, *, reason: str = "No reason provided"):
+        """Mute a user to prevent them from sending messages"""
+        orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+        async with ctx.typing():
+            seconds = self.hm_to_seconds(reason)
+            reason = self.hm_regex.sub("", reason) or "No reason provided"
+            if await self._mute(member_mentions, reason=reason, seconds=seconds, actor=ctx.author,
+                                orig_channel=ctx.channel):
+                await self.mod_log(ctx.author, "muted", member_mentions, reason, orig_channel, discord.Color.red(),
+                                   duration=datetime.timedelta(seconds=seconds))
+            else:
+                await ctx.send("Member was already muted! Updating duration and reason.")
+                await self.mod_log(ctx.author, "muted", member_mentions, reason, orig_channel, discord.Color.red(),
+                                   duration=datetime.timedelta(seconds=seconds), global_modlog=False, dm=False)
+
+    mute.example_usage = """
+    `{prefix}mute @user 1h reason` - mute @user for 1 hour for a given reason, the timing component (1h) and reason is optional.
+    """
+
+    @command(aliases=["unmuteuser", "unsilence"])
+    @has_permissions(manage_roles=True)
+    @bot_has_permissions(manage_permissions=True)
+    @app_commands.describe(member_mentions="The user to unmute", reason="(optional) The reason for the unmute")
+    async def unmute(self, ctx: DozerContext, member_mentions: discord.Member, *, reason="No reason provided"):
+        """Unmute a user to allow them to send messages again."""
+        orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+        async with ctx.typing():
+            if await self._unmute(member_mentions):
+                await self.mod_log(actor=ctx.author, action="unmuted", target=member_mentions, reason=reason,
+                                   orig_channel=orig_channel, embed_color=discord.Color.green())
+            else:
+                await ctx.send("Member is not muted!")
+
+    unmute.example_usage = """
+    `{prefix}unmute @user reason - unmute @user for a given (optional) reason
+    """
+
+    @command()
+    @has_permissions(manage_roles=True)
+    @bot_has_permissions(manage_permissions=True)
+    @app_commands.describe(member_mentions="User to deafen", reason="(optional) The reason for the deafen")
+    async def deafen(self, ctx: DozerContext, member_mentions: discord.Member, *, reason: str = "No reason provided"):
+        """Deafen a user to prevent them from both sending messages but also reading messages."""
+        orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+        async with ctx.typing():
+            seconds = self.hm_to_seconds(reason)
+            reason = self.hm_regex.sub("", reason) or "No reason provided"
+            if await self._deafen(member_mentions, reason, seconds=seconds, self_inflicted=False, actor=ctx.author,
+                                  orig_channel=orig_channel):
+                await self.mod_log(actor=ctx.author, action="deafened", target=member_mentions, reason=reason,
+                                   orig_channel=orig_channel,
+                                   embed_color=discord.Color.red(), duration=datetime.timedelta(seconds=seconds))
+            else:
+                await ctx.send("Member was already deafened! Updating duration and reason.")
+                await self.mod_log(ctx.author, "deafened", member_mentions, reason, orig_channel, discord.Color.red(),
+                                   duration=datetime.timedelta(seconds=seconds), global_modlog=False, dm=False)
+
+    deafen.example_usage = """
+    `{prefix}deafen @user 1h reason` - deafen @user for 1 hour for a given reason, the timing component (1h) is optional.
+    """
+
+    @command()
+    @bot_has_permissions(manage_permissions=True)  # Once instance globally, don't wait instead throw exception
+    @app_commands.describe(reason="time (number followed by s,m,h,d,m,y) and (optional): The reason for deafening yourself")
+    @discord.ext.commands.max_concurrency(1, wait=False, per=discord.ext.commands.BucketType.default)
+    @discord.ext.commands.cooldown(rate=10, per=2,
+                                   type=discord.ext.commands.BucketType.guild)  # 10 seconds per 2 members in the guild
+    async def selfdeafen(self, ctx: DozerContext, *, reason: str = "No reason provided"):
+        """Deafen yourself for a given time period to prevent you from reading or sending messages."""
+        orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+        async with ctx.typing():
+            seconds = self.hm_to_seconds(reason)
+            reason = self.hm_regex.sub("", reason) or "No reason provided"
+            if seconds < 300:
+                raise BadArgument("You must self deafen yourself for at least 5 minutes!")
+            if await self._deafen(ctx.author, reason, seconds=seconds, self_inflicted=True, actor=ctx.author,
+                                  orig_channel=orig_channel):
+                await self.mod_log(ctx.author, "deafened", ctx.author, reason, orig_channel, discord.Color.red(),
+                                   global_modlog=False,
+                                   duration=datetime.timedelta(seconds=seconds))
+            else:
+                await ctx.send("You are already deafened!", ephemeral = True)
+                traceback.format_exc()
+
+    selfdeafen.example_usage = """
+    `{prefix}selfdeafen time (1h5m, both optional) reason`: deafens you if you need to get work done
+    """
+
+    @command()
+    @has_permissions(manage_roles=True)
+    @bot_has_permissions(manage_permissions=True)
+    @app_commands.describe(member_mentions="User to undeafen", reason="(optional) The reason for undeafening")
+    async def undeafen(self, ctx: DozerContext, member_mentions: discord.Member, *, reason: str = "No reason provided"):
+        """Undeafen a user to allow them to see message and send message again."""
+        orig_channel = ctx.interaction.followup if ctx.interaction else ctx.channel
+        async with ctx.typing():
+            result = await self._undeafen(member_mentions)
+            if result[0]:
+                await self.mod_log(actor=ctx.author, action="undeafened", target=member_mentions, reason=reason,
+                                   orig_channel=orig_channel, embed_color=discord.Color.green(),
+                                   global_modlog=not result[1])
+            else:
+                await ctx.send("Member is not deafened!")
+
+    undeafen.example_usage = """
+    `{prefix}undeafen @user reason - undeafen @user for a given (optional) reason
+    """
+
+    @command()
+    async def voicekick(self, ctx: DozerContext, member: discord.Member, reason: str = "No reason provided"):
+        """Kick a user from voice chat. This is most useful if their perms to rejoin have already been removed."""
+        async with ctx.typing():
+            if member.voice is None:
+                await ctx.send("User is not in a voice channel!")
+                return
+            if not member.voice.channel.permissions_for(ctx.author).move_members:
+                await ctx.send("You do not have permission to do this!")
+                return
+            if not member.voice.channel.permissions_for(ctx.me).move_members:
+                await ctx.send("I do not have permission to do this!")
+                return
+            await member.edit(voice_channel=None, reason=reason)
+            await ctx.send(f"{member} has been kicked from voice chat.")
+
+    voicekick.example_usage = """
+    `{prefix}voicekick @user reason` - kick @user out of voice
+    """
+
+    @has_permissions(kick_members=True)
+    @bot_has_permissions(kick_members=True)
+    @command()
+    async def purgenm(self, ctx: DozerContext):
+        """Manually run a new member purge"""
+        memcount = await self.nm_kick_internal(guild=ctx.guild)
+        await ctx.send(f"Kicked {memcount} members due to inactivity!")
 
     """=== Configuration commands ==="""
 
-    @has_permissions(manage_guild=True)
-    @commands.hybrid_group(invoke_without_command=True, aliases=("GuildModLog",), case_insensitive=True)
-    async def serverconfig(self, ctx):
-        """Display server configuration information"""
-        guild = ctx.guild
-        e = discord.Embed()
-        e.color = discord.Color.blurple()
-        e.title = f"Server-specific bot settings for {guild.name}"
-        e.description = f"To change these settings, see `{ctx.prefix}help serverconfig` for details."
-        e.set_thumbnail(url=ctx.guild.icon.url)
-        config = await self.guild_config.query_one(guild_id=guild.id)
-        if not config:
-            config = GuildModLog.make_defaults(guild)
-            await config.insert()
-        if not config.guild_name:
-            config.guild_name = guild.name
-            await config.update()
-        self.guild_config.invalidate_entry(guild_id=ctx.guild.id)
-
-        def role_ent(rid):
-            if not rid:
-                return "Unset"
-            if rid == ctx.guild.id:
-                return "@everyone"
-            return f"<@&{rid}>"
-
-        def channel_ent(cid):
-            if not cid:
-                return "Unset"
-            return f"<#{cid}>"
-
-        e.add_field(name="New members channel", value=channel_ent(config.new_members_channel_id))
-        e.add_field(name="New members given role", value=role_ent(config.new_members_role_id))
-        e.add_field(name="New members entry message", value=config.new_members_message or "Unset")
-
-        e.add_field(name="Mod log", value=channel_ent(config.mod_log_channel_id))
-        e.add_field(name="Member log", value=channel_ent(config.member_log_channel_id))
-        e.add_field(name="Edit/delete log", value=channel_ent(config.message_log_channel_id))
-
-        e.add_field(name="Invite welcome channel", value=channel_ent(config.welcome_channel_id))
-        e.add_field(name="Member role", value=role_ent(config.member_role_id))
-        e.add_field(name="Links role", value=role_ent(config.links_role_id))
-        await ctx.send(embed=e)
-
-    serverconfig.example_usage = """
-    `{prefix}serverconfig` - display server configuration information
-    `{prefix}serverconfig unset modlog` - unset the modlog channel
-    """
-
-    @serverconfig.command()
+    @command()
     @has_permissions(administrator=True)
-    @app_commands.describe(setting="The setting to remove")
-    async def unset(self, ctx, setting):
-        """Unsets various server config settings."""
-        fields = {
-            "links": ("links_role_id",),
-            "memberlog": ("member_log_channel_id",),
-            "memberrole": ("member_role_id",),
-            "messagelog": ("message_log_channel_id",),
-            "modlog": ("mod_log_channel_id",),
-            "newmem": ("new_members_channel_id", "new_members_role_id", "new_members_message"),
-        }.get(setting, None)
-        if fields is None:
-            raise BadArgument("that guild-specific bot setting does not exist!")
-        config = await self.guild_config.query_one(guild_id=ctx.guild.id)
-        if config:
-            for field in fields:
-                setattr(config, field, None)
-            if setting == "memberrole":
-                config.member_role_id = ctx.guild.id
-            await config.update()
-        self.guild_config.invalidate_entry(guild_id=ctx.guild.id)
-        await ctx.send(f"Unset configuration for setting `{setting}`")
-
-    unset.example_usage = """
-    `{prefix}serverconfig unset newmem` - disable new member message verification
-    `{prefix}serverconfig unset memberlog` - disable member join/leave logs
-    `{prefix}serverconfig unset messagelog` - disable edit/delete logs
-    `{prefix}serverconfig unset modlog` - clear mod log settings
-    `{prefix}serverconfig unset memberrole` - reset the member role back to @everyone
-    `{prefix}serverconfig unset links` - clear links role settings
-    """
-
-    @serverconfig.command(name="modlog")
-    @has_permissions(administrator=True)
-    @app_commands.describe(channel_mentions="The channel to log moderation actions to")
-    async def modlogconfig(self, ctx, channel_mentions: discord.TextChannel):
+    @app_commands.describe(channel_mentions="The channel to set as the modlog channel")
+    async def modlogconfig(self, ctx: DozerContext, channel_mentions: discord.TextChannel):
         """Set the modlog channel for a server by passing the channel id"""
         config = await GuildModLog.get_by(guild_id=ctx.guild.id)
         if len(config) != 0:
@@ -1023,159 +873,203 @@ class Moderation(Cog):
         else:
             config = GuildModLog(guild_id=ctx.guild.id, modlog_channel=channel_mentions.id, name=ctx.guild.name)
         await config.update_or_add()
-        await ctx.send(ctx.message.author.mention + ', modlog settings configured!', ephemeral=True)
+        await ctx.send(ctx.message.author.mention + ', modlog settings configured!')
 
     modlogconfig.example_usage = """
-    `{prefix}serverconfig modlog #mod-log` - set a channel named #mod-log to log moderation actions
-    `{prefix}serverconfig unset modlog` - clear the modlog settings
+    `{prefix}modlogconfig #join-leave-logs` - set a channel named #join-leave-logs to log joins/leaves 
     """
 
-    @serverconfig.command(name="newmem")
-    @has_permissions(administrator=True)
-    @app_commands.describe(channel_mention="The channel to send new member verification messages to",
-                           role="role to give when a user verifies", message="The message to send to new members")
-    async def nmconfig(self, ctx, channel_mention: discord.TextChannel, role: discord.Role, *, message):
-        """Sets the config for the new members channel"""
+    @command()
+    @has_permissions(manage_guild=True)
+    @app_commands.describe(member="The member you want to manually verify")
+    async def verifymember(self, ctx, member: discord.Member):
+        """Command to verify a member who may not have a team number set, or who hasn't sent the required
+        verification message. """
+        config = await GuildNewMember.get_by(guild_id=ctx.guild.id)
+        if len(config) != 0:
+            role_id = config[0].role_id
+            role = ctx.guild.get_role(role_id)
+            if role in member.roles:
+                await ctx.send("Member is already verified. ")
+                return
 
-        await GuildModLog.update_guild(ctx.guild, new_members_channel_id=channel_mention.id,
-                                       new_members_role_id=role.id, new_members_message=message.casefold())
+            await member.add_roles(role)
+
+            custom_join_config = await CustomJoinLeaveMessages.get_by(guild_id=member.guild.id)
+            if custom_join_config[0].send_on_verify:
+                await send_log(member=member)
+            await ctx.send(f"Member verified on request of {ctx.author.display_name}")
+
+    @command()
+    @has_permissions(administrator=True)
+    @app_commands.describe(channel_mentions="The channel to set as the new members channel", role="The role to assign to new members")
+    async def nmconfig(self, ctx: DozerContext, channel_mention: discord.TextChannel, role: discord.Role, *, message,
+                       requireteam=None):
+        """Sets the config for the new members channel"""
+        config = await GuildNewMember.get_by(guild_id=ctx.guild.id)
+        if len(config) != 0:
+            config = config[0]
+            config.channel_id = channel_mention.id
+            config.role_id = role.id
+            config.require_team = requireteam
+            config.message = message.casefold()
+
+        else:
+            config = GuildNewMember(guild_id=ctx.guild.id, channel_id=channel_mention.id, role_id=role.id,
+                                    message=message.casefold(), require_team=requireteam)
+        await config.update_or_add()
 
         role_name = role.name
+        # this should be an embed or something else entirely
         await ctx.send(
-            "New Member Channel configured as: {channel}. Role configured as: {role}. Message: {message}".format(
-                channel=channel_mention.name, role=role_name, message=message))
+            f"New Member Channel configured as: {channel_mention.name}. Role configured as: {role_name}. "
+            f"Team numbers required: {requireteam}. Message: {message}")
 
     nmconfig.example_usage = """
-    `{prefix}serverconfig newmem #new_members Member I have read the rules and regulations`""" + \
-                             """ - Configures the #new_members channel so if someone types "I have read the rules and regulations" it assigns them the Member role.
-    `{prefix}serverconfig unset newmem` - Clear any settings back to default
+    `{prefix}nmconfig #new_members Member I have read the rules and regulations` - Configures the #new_members channel 
+    so if someone types "I have read the rules and regulations" it assigns them the Member role. 
     """
 
-    @serverconfig.command(name="memberrole")
+    @command()
     @has_permissions(administrator=True)
-    @app_commands.describe(member_role="The role to assign to members")
-    async def memberconfig(self, ctx, *, member_role: SafeRoleConverter):
+    @app_commands.describe(role="the role used for the new members purge", days="the number of days after which to kick members")
+    async def nmpurgeconfig(self, ctx: DozerContext, role: discord.Role, days: int):
+        """Sets the config for the new members purge"""
+        config = NewMemPurgeConfig(guild_id=ctx.guild.id, member_role=role.id, days=days)
+        await config.update_or_add()
+
+        await ctx.send("Settings saved!")
+
+    nmpurgeconfig.example_usage = """
+    `{prefix}nmpurgeconfig Members 90: Kicks everyone who doesn't have the members role 90 days after they join.
+    """
+
+    @command()
+    @has_permissions(administrator=True)
+    async def memberconfig(self, ctx: DozerContext, *, member_role: SafeRoleConverter):
         """
         Set the member role for the guild.
-        The member role is the role used for the timeout and pttlimit commands. It should be a role that all members of the server have.
+        The member role is the role used for the timeout command. It should be a role that all members of the server have.
         """
         if member_role >= ctx.author.top_role:
             raise BadArgument('member role cannot be higher than your top role!')
 
-        await GuildModLog.update_guild(ctx.guild, member_role_id=member_role.id)
-        await ctx.send('Member role set as `{}`.'.format(member_role.name))
+        settings = await MemberRole.get_by(guild_id=ctx.guild.id)
+        if len(settings) == 0:
+            settings = MemberRole(guild_id=ctx.guild.id, member_role=member_role.id)
+        else:
+            settings = settings[0]
+            settings.member_role = member_role.id
+        await settings.update_or_add()
+        await ctx.send(f'Member role set as `{member_role.name}`.')
 
     memberconfig.example_usage = """
-    `{prefix}serverconfig memberrole Members` - set a role called "Members" as the member role
-    `{prefix}serverconfig memberrole @everyone` - set the default role as the member role
-    `{prefix}serverconfig memberrole everyone` - set the default role as the member role (ping-safe)
-    `{prefix}serverconfig memberrole @ everyone` - set the default role as the member role (ping-safe)
-    `{prefix}serverconfig memberrole @.everyone` - set the default role as the member role (ping-safe)
-    `{prefix}serverconfig memberrole @/everyone` - set the default role as the member role (ping-safe)
-    `{prefix}serverconfig unset memberrole` - equivalent to `{prefix}serverconfig memberrole everyone`
+    `{prefix}memberconfig Members` - set a role called "Members" as the member role
+    `{prefix}memberconfig @everyone` - set the default role as the member role
+    `{prefix}memberconfig everyone` - set the default role as the member role (ping-safe)
+    `{prefix}memberconfig @ everyone` - set the default role as the member role (ping-safe)
+    `{prefix}memberconfig @.everyone` - set the default role as the member role (ping-safe)
+    `{prefix}memberconfig @/everyone` - set the default role as the member role (ping-safe)
     """
 
-    @serverconfig.command(name="links")
+    @command()
     @has_permissions(administrator=True)
     @bot_has_permissions(manage_messages=True)
     @app_commands.describe(link_role="The role that lets users post links")
-    async def linkscrubconfig(self, ctx, *, link_role: SafeRoleConverter):
+    async def linkscrubconfig(self, ctx: DozerContext, *, link_role: SafeRoleConverter):
         """
         Set a role that users must have in order to post links.
-        This accepts the safe default role conventions that serverconfig memberrole does.
+        This accepts the safe default role conventions that the memberconfig command does.
         """
         if link_role >= ctx.author.top_role:
             raise BadArgument('Link role cannot be higher than your top role!')
 
-        await GuildModLog.update_guild(ctx.guild, links_role_id=link_role.id)
+        settings = await GuildMessageLinks.get_by(guild_id=ctx.guild.id)
+        if len(settings) == 0:
+            settings = GuildMessageLinks(guild_id=ctx.guild.id, role_id=link_role.id)
+        else:
+            settings = settings[0]
+            settings.role_id = link_role.id
+        await settings.update_or_add()
+        self.links_config.invalidate_entry(guild_id=ctx.guild.id)
         await ctx.send(f'Link role set as `{link_role.name}`.')
 
     linkscrubconfig.example_usage = """
-    `{prefix}serverconfig links Links` - set a role called "Links" as the link role
-    `{prefix}serverconfig links @everyone` - set the default role as the link role
-    `{prefix}serverconfig links everyone` - set the default role as the link role (ping-safe)
-    `{prefix}serverconfig links @ everyone` - set the default role as the link role (ping-safe)
-    `{prefix}serverconfig links @.everyone` - set the default role as the link role (ping-safe)
-    `{prefix}serverconfig links @/everyone` - set the default role as the link role (ping-safe)
-    `{prefix}serverconfig unset links` - equivalent to `{prefix}serverconfig links everyone`
+    `{prefix}linkscrubconfig Links` - set a role called "Links" as the link role
+    `{prefix}linkscrubconfig @everyone` - set the default role as the link role
+    `{prefix}linkscrubconfig everyone` - set the default role as the link role (ping-safe)
+    `{prefix}linkscrubconfig @ everyone` - set the default role as the link role (ping-safe)
+    `{prefix}linkscrubconfig @.everyone` - set the default role as the link role (ping-safe)
+    `{prefix}linkscrubconfig @/everyone` - set the default role as the link role (ping-safe)
     """
 
-    @serverconfig.command(name="memberlog")
+    @group(invoke_without_command=True)
+    @has_permissions(manage_messages=True)
+    async def crossbans(self, ctx: DozerContext):
+        """Cross ban"""
+        subscriptions = await CrossBanSubscriptions.get_by(subscriber_id=ctx.guild.id)
+        subscribers = await CrossBanSubscriptions.get_by(subscription_id=ctx.guild.id)
+        embed = discord.Embed(title="Cross ban subscriptions", color=blurple)
+        for field_number, target_ids in enumerate(chunk(subscriptions, 10)):
+            embed.add_field(name='Subscriptions',
+                            value='\n'.join(f"{self.bot.get_guild(sub_id.subscription_id)} | {sub_id.subscription_id}"
+                                            for sub_id in target_ids) or 'None', inline=False)
+        for field_number, target_ids in enumerate(chunk(subscribers, 10)):
+            embed.add_field(name='Subscribers',
+                            value='\n'.join(f"{self.bot.get_guild(sub_id.subscriber_id)} | {sub_id.subscriber_id}"
+                                            for sub_id in target_ids) or 'None', inline=False)
+        embed.set_footer(text='Triggered by ' + ctx.author.display_name)
+
+        await ctx.send(embed=embed)
+
+    @crossbans.command()
+    @has_permissions(manage_messages=True)
+    async def view_subs(self, ctx: DozerContext):
+        """View crossban subscriptions for the current server"""
+        await self.crossbans(ctx)
+
+    @crossbans.command()
     @has_permissions(administrator=True)
-    @app_commands.describe(channel_mentions="The channel to log member join/leave events to")
-    async def memberlogconfig(self, ctx, channel_mentions: discord.TextChannel):
-        """Set the join/leave channel for a server by passing a channel mention"""
-        await GuildModLog.update_guild(ctx.guild, member_log_channel_id=channel_mentions.id)
-        await ctx.send(ctx.message.author.mention + ', memberlog settings configured!')
+    @bot_has_permissions(ban_members=True)
+    @app_commands.describe(guild_id="The server you'd like to subscribe to bans from")
+    async def subscribe(self, ctx: DozerContext, guild_id):
+        """Subscribe to a guild to cross ban from"""
+        guild_id = int(guild_id)
+        guild = self.bot.get_guild(guild_id)
+        if guild:
+            subscription = CrossBanSubscriptions(
+                subscriber_id=ctx.guild.id,
+                subscription_id=guild.id
+            )
+            await subscription.update_or_add()
+            embed = discord.Embed(title='Success!',
+                                  description=f"**{ctx.guild}** is now subscribed to receive crossbans from **{guild}**",
+                                  color=blurple)
+            embed.set_footer(text='Triggered by ' + ctx.author.display_name)
+            await ctx.send(embed=embed)
+        else:
+            raise BadArgument("Dozer could not find that guild! Make sure that dozer is in that guild!")
 
-    memberlogconfig.example_usage = """
-    `{prefix}serverconfig memberlog #join-leave-logs` - set a channel named #join-leave-logs to log joins/leaves 
-    `{prefix}serverconfig unset memberlog` - disable this behavior
-    """
-
-    @serverconfig.command(name="messagelog")
+    @crossbans.command()
     @has_permissions(administrator=True)
-    @app_commands.describe(channel_mentions="The channel to log message edits/deletes to")
-    async def messagelogconfig(self, ctx: DozerContext, channel_mentions: discord.TextChannel):
-        """Set the modlog channel for a server by passing the channel id"""
-        await GuildModLog.get_by(guild_id=ctx.guild.id, message_log_channel_id=channel_mentions.id)
-        await ctx.send(ctx.message.author.mention + ', messagelog settings configured!')
+    @app_commands.describe(guild_id="The server you'd like to unsubscribe from for ban data")
+    async def unsubscribe(self, ctx: DozerContext, guild_id):
+        """Remove cross ban subscription"""
+        guild_id = int(guild_id)
+        result = await CrossBanSubscriptions.delete(
+            subscriber_id=ctx.guild.id,
+            subscription_id=guild_id
+        )
 
-    messagelogconfig.example_usage = """
-    `{prefix}serverconfig messagelog #edit-delete-logs` - set a channel named #edit-delete-logs to log message edits/deletions
-    `{prefix}serverconfig unset messagelog` - disable this behavior
-    """
-
-    @serverconfig.command(name="welcome")
-    @has_permissions(administrator=True)
-    @app_commands.describe(welcome_channel="The channel to send welcome messages to")
-    async def welcomeconfig(self, ctx: DozerContext, *, welcome_channel: discord.TextChannel):
-        """
-        Sets the new member channel for this guild.
-        """
-        if welcome_channel.guild != ctx.guild:
-            await ctx.send("That channel is not in this guild.")
-            return
-
-        await GuildModLog.get_by(guild_id=ctx.guild.id, welcome_channel_id=welcome_channel.id)
-        await ctx.send("Welcome channel set to {}".format(welcome_channel.mention))
-
-    welcomeconfig.example_usage = """
-    `{prefix}serverconfig welcome #new-members` - Sets the invite channel to #new-members.
-    """
-
-
-class GuildModLog(db.DatabaseTable):
-    """Holds modlog info"""
-    __tablename__ = 'modlogconfig'
-    __uniques__ = ('guild_id',)
-
-    @classmethod
-    async def initial_create(cls):
-        """Create the table in the database"""
-        async with db.Pool.acquire() as conn:
-            await conn.execute(f"""
-            CREATE TABLE {cls.__tablename__} (
-            guild_id bigint PRIMARY KEY NOT NULL,
-            modlog_channel bigint null,
-            name varchar NOT NULL
-            )""")
-
-    def __init__(self, guild_id: int, modlog_channel: int, name: str):
-        super().__init__()
-        self.guild_id = guild_id
-        self.modlog_channel = modlog_channel
-        self.name = name
-
-    @classmethod
-    async def get_by(cls, **kwargs):
-        results = await super().get_by(**kwargs)
-        result_list = []
-        for result in results:
-            obj = GuildModLog(guild_id=result.get("guild_id"), modlog_channel=result.get("modlog_channel"),
-                              name=result.get("name"))
-            result_list.append(obj)
-        return result_list
+        if int(result.split(" ", 1)[1]) > 0:
+            guild = self.bot.get_guild(guild_id)
+            embed = discord.Embed(title='Success!',
+                                  description=f"**{ctx.guild}** is no longer subscribed to receive crossbans from **{guild}**",
+                                  color=blurple)
+            embed.set_footer(text='Triggered by ' + ctx.author.display_name)
+            await ctx.send(embed=embed)
+        else:
+            raise BadArgument("Dozer could not find a subscription to that guild!")
 
 
 class Mute(db.DatabaseTable):
@@ -1184,7 +1078,7 @@ class Mute(db.DatabaseTable):
     past_participle = "muted"
     finished_callback = Moderation._unmute
     __tablename__ = 'mutes'
-    __uniques__ = ('guild_id', 'member_id')
+    __uniques__ = 'guild_id, member_id'
 
     @classmethod
     async def initial_create(cls):
@@ -1234,7 +1128,7 @@ class Deafen(db.DatabaseTable):
     """Holds deafens"""
     type = 2
     __tablename__ = 'deafens'
-    __uniques__ = ('member_id', 'guild_id')
+    __uniques__ = 'member_id, guild_id'
     past_participle = "deafened"
     finished_callback = Moderation._undeafen
 
@@ -1267,10 +1161,74 @@ class Deafen(db.DatabaseTable):
         return result_list
 
 
+class GuildModLog(db.DatabaseTable):
+    """Holds modlog info"""
+    __tablename__ = 'modlogconfig'
+    __uniques__ = 'guild_id'
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint PRIMARY KEY NOT NULL,
+            modlog_channel bigint null,
+            name varchar NOT NULL
+            )""")
+
+    def __init__(self, guild_id: int, modlog_channel: int, name: str):
+        super().__init__()
+        self.guild_id = guild_id
+        self.modlog_channel = modlog_channel
+        self.name = name
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = GuildModLog(guild_id=result.get("guild_id"), modlog_channel=result.get("modlog_channel"),
+                              name=result.get("name"))
+            result_list.append(obj)
+        return result_list
+
+
+class CrossBanSubscriptions(db.DatabaseTable):
+    """Holds all cross ban subscriptions"""
+    __tablename__ = 'cross_ban_subscriptions'
+    __uniques__ = 'subscriber_id, subscription_id'
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__}(
+                subscriber_id bigint NOT NULL,
+                subscription_id bigint NOT NULL,
+                UNIQUE (subscriber_id, subscription_id)
+            )""")
+
+    def __init__(self, subscriber_id: int, subscription_id: int):
+        self.subscriber_id = subscriber_id
+        self.subscription_id = subscription_id
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = CrossBanSubscriptions(subscriber_id=result.get("subscriber_id"),
+                                        subscription_id=result.get("subscription_id"))
+            result_list.append(obj)
+        return result_list
+
+
 class MemberRole(db.DatabaseTable):
     """Holds info on member roles used for timeouts"""
     __tablename__ = 'member_roles'
-    __uniques__ = ('guild_id',)
+    __uniques__ = 'guild_id'
 
     @classmethod
     async def initial_create(cls):
@@ -1300,7 +1258,7 @@ class MemberRole(db.DatabaseTable):
 class NewMemPurgeConfig(db.DatabaseTable):
     """Holds info on member purge routines"""
     __tablename__ = 'member_purge_configs'
-    __uniques__ = ('guild_id',)
+    __uniques__ = 'guild_id'
 
     @classmethod
     async def initial_create(cls):
@@ -1334,7 +1292,7 @@ class NewMemPurgeConfig(db.DatabaseTable):
 class GuildNewMember(db.DatabaseTable):
     """Holds new member info"""
     __tablename__ = 'new_members'
-    __uniques__ = ('guild_id',)
+    __uniques__ = 'guild_id'
 
     @classmethod
     async def initial_create(cls):
@@ -1374,13 +1332,13 @@ class GuildNewMember(db.DatabaseTable):
             ALTER TABLE {self.__tablename__} ADD require_team bool NOT NULL DEFAULT false;
             """)
 
-    __versions__ = (version_1,)
+    __versions__ = [version_1]
 
 
 class GuildMessageLinks(db.DatabaseTable):
     """Contains information for link scrubbing"""
     __tablename__ = 'guild_msg_links'
-    __uniques__ = ('guild_id',)
+    __uniques__ = 'guild_id'
 
     @classmethod
     async def initial_create(cls):
@@ -1411,7 +1369,7 @@ class PunishmentTimerRecords(db.DatabaseTable):
     """Punishment Timer Records"""
     type_map = {p.type: p for p in (Mute, Deafen)}
     __tablename__ = 'punishment_timers'
-    __uniques__ = ('id',)
+    __uniques__ = 'id'
 
     @classmethod
     async def initial_create(cls):
@@ -1463,7 +1421,7 @@ class PunishmentTimerRecords(db.DatabaseTable):
             ALTER TABLE {self.__tablename__} ADD self_inflicted bool NOT NULL DEFAULT false;
             """)
 
-    __versions__ = (version_1,)
+    __versions__ = [version_1]
 
 
 async def setup(bot):
