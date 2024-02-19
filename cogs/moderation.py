@@ -491,7 +491,7 @@ class Moderation(Cog):
 
     """=== Direct moderation commands ==="""
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(kick_members=True)
     async def warn(self, ctx: DozerContext, member: discord.Member, *, reason: str):
         """Sends a message to the mod log specifying the member has been warned without punishment."""
@@ -502,7 +502,7 @@ class Moderation(Cog):
     `{prefix}`warn @user reason - warns a user for "reason"
     """
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(kick_members=True)
     @app_commands.describe(reason="The reason you want to see in mod-logs")
     async def customlog(self, ctx: DozerContext, *, reason: str):
@@ -515,7 +515,7 @@ class Moderation(Cog):
     `{prefix}`customlog reason - warns a user for "reason"
     """
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(manage_permissions=True)
     @bot_has_permissions(manage_permissions=True)
     @app_commands.describe(duration="Duration in seconds to timeout the channel")
@@ -570,7 +570,7 @@ class Moderation(Cog):
     `{prefix}timeout 60` - prevents sending messages in this channel for 1 minute (60s)
     """
 
-    @command(aliases=["purge"])
+    @commands.hybrid_command(aliases=["purge"])
     @has_permissions(manage_messages=True)
     @bot_has_permissions(manage_messages=True, read_message_history=True)
     @app_commands.describe(num="The number of messages to prune")
@@ -604,7 +604,7 @@ class Moderation(Cog):
     `{prefix}prune 786324930378727484` - Deletes all messages up to that message ID
     """
 
-    @command()
+    @commands.hybrid_command()
     @guild_only()
     @has_permissions(manage_roles=True)
     async def punishments(self, ctx: DozerContext):
@@ -658,7 +658,7 @@ class Moderation(Cog):
     `{prefix}punishments:` Lists currently active punishments in current guild
     """
 
-    @command(aliases=["eject"])
+    @commands.hybrid_command(aliases=["eject"])
     @has_permissions(ban_members=True)
     @bot_has_permissions(ban_members=True)
     @app_commands.describe(user_mention="The user to ban", reason="(optional) The reason for the ban")
@@ -685,7 +685,7 @@ class Moderation(Cog):
     `{prefix}ban @user reason - ban @user for a given (optional) reason
     """
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(ban_members=True)
     @bot_has_permissions(ban_members=True)
     @app_commands.describe(user_mention="The user to unban", reason="(optional) The reason for the unban")
@@ -700,7 +700,7 @@ class Moderation(Cog):
     `{prefix}unban user_id reason - unban the user corresponding to the ID for a given (optional) reason
     """
 
-    @command(aliases=["dropkick", "boot", "👢"])
+    @commands.hybrid_command(aliases=["dropkick", "boot", "👢"])
     @has_permissions(kick_members=True)
     @bot_has_permissions(kick_members=True)
     @app_commands.describe(user_mention="The user to kick", reason="(optional) The reason for the kick")
@@ -718,7 +718,7 @@ class Moderation(Cog):
     `{prefix}kick @user reason - kick @user for a given (optional) reason
     """
 
-    @command(aliases=["muteuser", "silence"])
+    @commands.hybrid_command(aliases=["muteuser", "silence"])
     @has_permissions(manage_roles=True)
     @bot_has_permissions(manage_permissions=True)
     @app_commands.describe(member_mentions="The user to mute", reason="(optional) The reason for the mute")
@@ -741,7 +741,7 @@ class Moderation(Cog):
     `{prefix}mute @user 1h reason` - mute @user for 1 hour for a given reason, the timing component (1h) and reason is optional.
     """
 
-    @command(aliases=["unmuteuser", "unsilence"])
+    @commands.hybrid_command(aliases=["unmuteuser", "unsilence"])
     @has_permissions(manage_roles=True)
     @bot_has_permissions(manage_permissions=True)
     @app_commands.describe(member_mentions="The user to unmute", reason="(optional) The reason for the unmute")
@@ -759,7 +759,7 @@ class Moderation(Cog):
     `{prefix}unmute @user reason - unmute @user for a given (optional) reason
     """
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(manage_roles=True)
     @bot_has_permissions(manage_permissions=True)
     @app_commands.describe(member_mentions="User to deafen", reason="(optional) The reason for the deafen")
@@ -783,7 +783,7 @@ class Moderation(Cog):
     `{prefix}deafen @user 1h reason` - deafen @user for 1 hour for a given reason, the timing component (1h) is optional.
     """
 
-    @command()
+    @commands.hybrid_command()
     @bot_has_permissions(manage_permissions=True)  # Once instance globally, don't wait instead throw exception
     @app_commands.describe(reason="time (number followed by s,m,h,d,m,y) and (optional): The reason for deafening yourself")
     @discord.ext.commands.max_concurrency(1, wait=False, per=discord.ext.commands.BucketType.default)
@@ -810,7 +810,7 @@ class Moderation(Cog):
     `{prefix}selfdeafen time (1h5m, both optional) reason`: deafens you if you need to get work done
     """
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(manage_roles=True)
     @bot_has_permissions(manage_permissions=True)
     @app_commands.describe(member_mentions="User to undeafen", reason="(optional) The reason for undeafening")
@@ -830,7 +830,7 @@ class Moderation(Cog):
     `{prefix}undeafen @user reason - undeafen @user for a given (optional) reason
     """
 
-    @command()
+    @commands.hybrid_command()
     async def voicekick(self, ctx: DozerContext, member: discord.Member, reason: str = "No reason provided"):
         """Kick a user from voice chat. This is most useful if their perms to rejoin have already been removed."""
         async with ctx.typing():
@@ -852,7 +852,7 @@ class Moderation(Cog):
 
     @has_permissions(kick_members=True)
     @bot_has_permissions(kick_members=True)
-    @command()
+    @commands.hybrid_command()
     async def purgenm(self, ctx: DozerContext):
         """Manually run a new member purge"""
         memcount = await self.nm_kick_internal(guild=ctx.guild)
@@ -860,7 +860,7 @@ class Moderation(Cog):
 
     """=== Configuration commands ==="""
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(administrator=True)
     @app_commands.describe(channel_mentions="The channel to set as the modlog channel")
     async def modlogconfig(self, ctx: DozerContext, channel_mentions: discord.TextChannel):
@@ -879,7 +879,7 @@ class Moderation(Cog):
     `{prefix}modlogconfig #join-leave-logs` - set a channel named #join-leave-logs to log joins/leaves 
     """
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(manage_guild=True)
     @app_commands.describe(member="The member you want to manually verify")
     async def verifymember(self, ctx, member: discord.Member):
@@ -900,9 +900,9 @@ class Moderation(Cog):
                 await send_log(member=member)
             await ctx.send(f"Member verified on request of {ctx.author.display_name}")
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(administrator=True)
-    @app_commands.describe(channel_mentions="The channel to set as the new members channel", role="The role to assign to new members")
+    @app_commands.describe(channel_mention="The channel to set as the new members channel", role="The role to assign to new members")
     async def nmconfig(self, ctx: DozerContext, channel_mention: discord.TextChannel, role: discord.Role, *, message,
                        requireteam=None):
         """Sets the config for the new members channel"""
@@ -930,7 +930,7 @@ class Moderation(Cog):
     so if someone types "I have read the rules and regulations" it assigns them the Member role. 
     """
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(administrator=True)
     @app_commands.describe(role="the role used for the new members purge", days="the number of days after which to kick members")
     async def nmpurgeconfig(self, ctx: DozerContext, role: discord.Role, days: int):
@@ -944,7 +944,7 @@ class Moderation(Cog):
     `{prefix}nmpurgeconfig Members 90: Kicks everyone who doesn't have the members role 90 days after they join.
     """
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(administrator=True)
     async def memberconfig(self, ctx: DozerContext, *, member_role: SafeRoleConverter):
         """
@@ -972,7 +972,7 @@ class Moderation(Cog):
     `{prefix}memberconfig @/everyone` - set the default role as the member role (ping-safe)
     """
 
-    @command()
+    @commands.hybrid_command()
     @has_permissions(administrator=True)
     @bot_has_permissions(manage_messages=True)
     @app_commands.describe(link_role="The role that lets users post links")
