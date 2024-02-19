@@ -67,12 +67,12 @@ async def profile(interaction: discord.Interaction, member: discord.Member):
         await view.wait()
         if view.value:
             msg = await interaction.original_response()
-            embed.remove_field(5 if member.premium_since is None else 6)
+            embed.remove_field(3 if member.premium_since is None else 4)
             await msg.edit(embed = embed, view = None)
 
             teams = await TeamNumbers.get_by(user_id = member.id)
             onteam_embed = discord.Embed(color = discord.Color.blue())
-            onteam_embed.title = f'{member.mention} is on the following team(s):'
+            onteam_embed.title = f'{member.display_name} is on the following team(s):'
             onteam_embed.description = "Teams: \n"
             for i in teams:
                 onteam_embed.description = f"{onteam_embed.description} {i.team_type.upper()} Team {i.team_number} \n"
