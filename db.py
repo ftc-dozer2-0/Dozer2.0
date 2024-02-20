@@ -98,14 +98,14 @@ class DatabaseTable:
                 statement = f"""
                 INSERT INTO {self.__tablename__} ({", ".join(keys)})
                 VALUES({','.join(f'${i + 1}' for i in range(len(values)))})
-                ON CONFLICT ({','.join(self.__uniques__)}) DO UPDATE
+                ON CONFLICT ({self.__uniques__}) DO UPDATE
                 SET {updates}
                 """
             else:
                 statement = f"""
                 INSERT INTO {self.__tablename__} ({", ".join(keys)})
                 VALUES({','.join(f'${i + 1}' for i in range(len(values)))})
-                ON CONFLICT ({','.join(self.__uniques__)}) DO NOTHING;
+                ON CONFLICT ({self.__uniques__}) DO NOTHING;
                 """
             await conn.execute(statement, *values)
 
