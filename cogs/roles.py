@@ -599,12 +599,12 @@ class Roles(commands.Cog):
     @app_commands.describe(message_id = "Message ID of the menu", role = "Role to add", channel = "Channel the menu "
                                                                                                   "is in",
                            emoji = "Emoji to add to the list")
-    async def addrole(self, ctx: DozerContext, channel: typing.Optional[discord.TextChannel], message_id: int,
+    async def addrole(self, ctx: DozerContext, channel: typing.Optional[discord.TextChannel], message_id,
                       role: discord.Role,
                       emoji):
 
         """Adds a reaction role to a message or a role menu"""
-        print(emoji)
+        message_id = int(message_id)
         try:
             emoji_id = int(emoji.split(":")[-1][:-1])  # Extracting ID from the string
             server_emoji_ids = [(emoji.name, str(emoji.id)) for emoji in await ctx.guild.fetch_emojis()]
