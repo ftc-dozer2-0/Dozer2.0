@@ -2,7 +2,6 @@
 
 import json
 from asyncio import sleep
-	@@ -13,18 +13,17 @@
 from discord.ext import commands
 from discord.utils import escape_markdown
 
