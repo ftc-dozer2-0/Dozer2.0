@@ -1,20 +1,14 @@
-"""Provides commands that pull information from The Orange Alliance, an FTC info API."""
+"""Provides commands that pull information from FTC-Events and FTCScout."""
 
 import json
 from asyncio import sleep
-from datetime import datetime
-from urllib.parse import urljoin, urlencode
-import base64
-
-import aiohttp
-import async_timeout
-import discord
-from discord import app_commands
+	@@ -13,18 +13,17 @@
 from discord.ext import commands
 from discord.utils import escape_markdown
 
-from dozer.context import DozerContext
+from context import DozerContext
 from ._utils import *
+import db
 
 embed_color = discord.Color(0xed791e)
 
