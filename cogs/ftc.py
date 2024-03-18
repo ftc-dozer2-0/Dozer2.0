@@ -1,4 +1,4 @@
-"""Provides commands that pull information from FTC-Events and FTCScout."""
+"""Provides commands that pull information from The Orange Alliance, an FTC info API."""
 
 import json
 from asyncio import sleep
@@ -13,18 +13,17 @@ from discord import app_commands
 from discord.ext import commands
 from discord.utils import escape_markdown
 
-from context import DozerContext
+from dozer.context import DozerContext
 from ._utils import *
-import db
 
 embed_color = discord.Color(0xed791e)
 
-__all__ = ['FTCEventsClient', 'FTCInfo', 'setup', 'TeamNumbers']
+__all__ = ['FTCEventsClient', 'FTCInfo', 'setup']
 
 
 def get_none_strip(s, key):
     """Ensures that a get always returns a stripped string."""
-    return (str(s.get(key, "")) or "").strip()
+    return str(s.get(key, "") or "").strip()
 
 
 class FTCEventsClient:
@@ -181,7 +180,8 @@ class FTCEventsClient:
 
             field_desc = field_desc + f" {wincode} {red_score}-{blu_score}"
             embed.add_field(name=field_title,
-                            value=f"[{field_desc}]({FTCEventsClient.get_url_for_match(szn, ecode, m)})", inline=False)
+                            value=f"[{field_desc}]({FTCEventsClient.get_url_for_match(szn, ecode, m)})",
+                            inline=False)
 
 
 class ScoutParser:
@@ -245,16 +245,16 @@ class FTCInfo(Cog):
 
     @ftc.command()
     @bot_has_permissions(embed_links=True)
-    @app_commands.describe(team_num = "The number of the team you're interested in getting info")
+    @app_commands.describe(team_num="The number of the team you're interested in getting info")
     async def team(self, ctx: DozerContext, team_num: int):
         """Get information on an FTC team by number."""
         if team_num < 1:
             await ctx.send("Invalid team number specified!")
+            return
         res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team_num)}))
-        sres = await self.scparser.req(f"teams/{team_num}/quick-stats")
-        async with res, sres:
+        async with res:
             if res.status == 400:
-                await ctx.send("This team either did not compete this season, or it does not exist!")
+                await ctx.send(f"Team {team_num} either did not compete this season, or it does not exist!")
                 return
             team_data = await res.json(content_type=None)
             if not team_data:
@@ -276,23 +276,65 @@ class FTCInfo(Cog):
                         value=', '.join((team_data['city'], team_data['stateProv'], team_data['country'])) or "Unknown")
             e.add_field(name='Org/Sponsors', value=team_data.get('nameFull', "").strip() or "_ _")
             e.add_field(name='Website', value=website or 'n/a')
-            e.add_field(name='Team Info Page', value=f'https://ftcscout.org/teams/{team_num}')
+            e.add_field(name='FTCScout Page', value=f'https://ftcscout.org/teams/{team_num}')
+
+            e.set_footer(
+                text="Team information from FTC-Events.")
+
+            await ctx.send(embed=e)
+
+
+    @ftc.command(aliases=["topr", "ftcopr"])
+    @bot_has_permissions(embed_links=True)
+    @app_commands.describe(team_num="The number of the team you're interested in getting info")
+    async def opr(self, ctx: DozerContext, team_num: int):
+        """Get information with OPR on an FTC team by number."""
+        if team_num < 1:
+            await ctx.send("Invalid team number specified!")
+            return
+        res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team_num)}))
+        sres = await self.scparser.req(f"teams/{team_num}/quick-stats")
+        async with res, sres:
+            if res.status == 400:
+                await ctx.send(f"Team {team_num} either did not compete this season, or it does not exist!")
+                return
+            team_data = await res.json(content_type=None)
+            if not team_data:
+                await ctx.send(f"FTC-Events returned nothing on request with HTTP response code {res.status}.")
+                return
+            team_data = team_data['teams'][0]
+
+            # many team entries lack a valid url
+            website = get_none_strip(team_data, 'website')
+            if website and not (website.startswith("http://") or website.startswith("https://")):
+                website = "http://" + website
+
+            e = discord.Embed(color=embed_color,
+                              title=f'FIRST® Tech Challenge Team {team_num}',
+                              url=f"https://ftc-events.firstinspires.org/{FTCEventsClient.get_season()}/team/{team_num}")
+            e.add_field(name='Name', value=get_none_strip(team_data, 'nameShort') or "_ _")
+            e.add_field(name='Rookie Year', value=get_none_strip(team_data, 'rookieYear') or "Unknown")
+            e.add_field(name='Location',
+                        value=', '.join(
+                            (team_data['city'], team_data['stateProv'], team_data['country'])) or "Unknown")
+            e.add_field(name='Org/Sponsors', value=team_data.get('nameFull', "").strip() or "_ _")
+            e.add_field(name='Website', value=website or 'n/a')
+            e.add_field(name='FTCScout Page', value=f'https://ftcscout.org/teams/{team_num}')
 
             if sres.status != 404:
-                team_stats = await sres.json(content_type = None)
-                e.add_field(name = 'Total OPR',
-                            value = f"{team_stats['tot']['value']:.0f}, rank #{team_stats['tot']['rank']:.0f}")
-                e.add_field(name = 'Auto OPR',
-                            value = f"{team_stats['auto']['value']:.0f}, rank #{team_stats['auto']['rank']:.0f}")
-                e.add_field(name = 'Teleop OPR',
-                            value = f"{team_stats['dc']['value']:.0f}, rank #{team_stats['dc']['rank']:.0f}")
-                e.add_field(name = 'Endgame OPR',
-                            value = f"{team_stats['eg']['value']:.0f}, rank #{team_stats['eg']['rank']:.0f}")
+                team_stats = await sres.json(content_type=None)
+                e.add_field(name='Total OPR',
+                            value=f"{team_stats['tot']['value']:.0f}, rank #{team_stats['tot']['rank']:.0f}")
+                e.add_field(name='Auto OPR',
+                            value=f"{team_stats['auto']['value']:.0f}, rank #{team_stats['auto']['rank']:.0f}")
+                e.add_field(name='Teleop OPR',
+                            value=f"{team_stats['dc']['value']:.0f}, rank #{team_stats['dc']['rank']:.0f}")
+                e.add_field(name='Endgame OPR',
+                            value=f"{team_stats['eg']['value']:.0f}, rank #{team_stats['eg']['rank']:.0f}")
 
-            if len(await TeamNumbers.get_by(team_number = team_num)) > 0:
-                num_members = len(await TeamNumbers.get_by(team_number = team_num))
-                e.set_footer(text = f"This team has at least {num_members} member{'s' if num_members > 1 else ''} in "
-                                    f"the bot's database.")
+            e.set_footer(
+                text="Team information from FTC-Events. "
+                     "OPR data from FTCScout.")
 
             await ctx.send(embed=e)
 
@@ -302,7 +344,8 @@ class FTCInfo(Cog):
 
     @ftc.command()
     @bot_has_permissions(embed_links=True)
-    @app_commands.describe(team_num = "The number of the team you're interested in getting matches for", event_name = "The official name of the event")
+    @app_commands.describe(team_num="The number of the team you're interested in getting matches for",
+                           event_name="The official name of the event")
     async def matches(self, ctx: DozerContext, team_num: int, event_name: str = "latest"):
         """Get a match schedule, defaulting to the latest listed event on FTC-Events"""
         szn = FTCEventsClient.get_season()
@@ -349,7 +392,7 @@ class FTCInfo(Cog):
             if event is None:
                 await ctx.send(f"Team {team_num} did not attend {event_name}!")
                 return
-        #
+        # 
         event_url = f"https://ftc-events.firstinspires.org/{szn}/{event['code']}"
 
         # fetch the rankings
@@ -381,7 +424,6 @@ class FTCInfo(Cog):
         req = await self.ftcevents.reqjson(f"schedule/{event['code']}/qual/hybrid",
                                            on_other=lambda r: ctx.send(
                                                f"FTC-Events returned an HTTP error status of: {req.status}. Something is broken."))
-
         if req is None:
             return
         res = req['schedule']
@@ -392,7 +434,6 @@ class FTCInfo(Cog):
         req = await self.ftcevents.reqjson(f"schedule/{event['code']}/playoff/hybrid",
                                            on_other=lambda r: ctx.send(
                                                f"FTC-Events returned an HTTP error status of: {req.status}. Something is broken."))
-
         if req is None:
             return
         res = req['schedule']
@@ -413,38 +454,3 @@ class FTCInfo(Cog):
 async def setup(bot):
     """Adds the FTC information cog to the bot."""
     await bot.add_cog(FTCInfo(bot))
-
-
-class TeamNumbers(db.DatabaseTable):
-    """Database operations for tracking team associations."""
-    __tablename__ = 'team_numbers'
-    __uniques__ = ('user_id', 'team_number', 'team_type',)
-
-    @classmethod
-    async def initial_create(cls):
-        """Create the table in the database"""
-        async with db.Pool.acquire() as conn:
-            await conn.execute(f"""
-            CREATE TABLE {cls.__tablename__} (
-            user_id bigint NOT NULL,
-            team_number text NOT NULL,
-            team_type VARCHAR NOT NULL,
-            PRIMARY KEY (user_id, team_number, team_type)
-            )""")
-
-    def __init__(self, user_id, team_number, team_type):
-        super().__init__()
-        self.user_id = user_id
-        self.team_number = team_number
-        self.team_type = team_type
-
-    @classmethod
-    async def get_by(cls, **kwargs):
-        results = await super().get_by(**kwargs)
-        result_list = []
-        for result in results:
-            obj = TeamNumbers(user_id = result.get("user_id"),
-                              team_number = result.get("team_number"),
-                              team_type = result.get("team_type"))
-            result_list.append(obj)
-        return result_list
