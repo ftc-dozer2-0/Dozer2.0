@@ -2,6 +2,14 @@
 
 import json
 from asyncio import sleep
+from datetime import datetime
+from urllib.parse import urljoin, urlencode
+import base64
+
+import aiohttp
+import async_timeout
+import discord
+from discord import app_commands
 from discord.ext import commands
 from discord.utils import escape_markdown
 
