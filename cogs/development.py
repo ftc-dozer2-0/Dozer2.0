@@ -1,6 +1,8 @@
 """Commands specific to development. Only approved developers can use these commands."""
 import copy
 import re
+from typing import List
+
 from loguru import logger
 import discord
 
@@ -58,6 +60,16 @@ class DropdownView(discord.ui.View):
         self.bot = bot
 
 
+async def paginate_servers(ctx: DozerContext, server_data: List[str], *, start: int = 0, auto_remove: bool = True,
+                           timeout: int = 60):
+    """
+    Paginate server data.
+    """
+    pages = [
+        discord.Embed(title = "List of servers", color = discord.Color.blue()).add_field(name = '', value = "\n".join([f"{guild}" for guild in data]), inline = False) for data in server_data]
+    await paginate(ctx, pages, start = start, auto_remove = auto_remove, timeout = timeout)
+
+
 class Development(commands.Cog):
     """
     Commands useful for developing the bot.
@@ -76,6 +88,13 @@ class Development(commands.Cog):
         if ctx.author.id not in ctx.bot.config['developers']:
             raise NotOwner('you are not a developer!')
         return True
+
+    @staticmethod
+    def chunk_server_data(server_data: List[str], chunk_size: int = 10):
+        """
+        Chunk the server data into smaller chunks to fit into pages.
+        """
+        return (server_data[i:i + chunk_size] for i in range(0, len(server_data), chunk_size))
 
     @staticmethod
     async def line_print(ctx: discord.abc.Messageable, title, iterable, color = discord.Color.default()):
@@ -166,9 +185,12 @@ class Development(commands.Cog):
     @dev_check()
     async def listservers(self, ctx: DozerContext):
         """Lists the servers that the bot is in. Only accessible to developers."""
-        embed = discord.Embed(title = "List of servers:", color = discord.Color.blue())
-        embed.add_field(name = "Servers:", value = "\n".join([f"{guild.name} ({guild.id})" for guild in self.bot.guilds]))
-        await ctx.send(embed = embed, ephemeral = True)
+        #embed.add_field(name = "Servers:", value = "\n".join([f"{guild.name} ({guild.id})" for guild in self.bot.guilds]))
+        # Inside your command or wherever you're building the server list
+        server_data = [f"{guild.name} ({guild.id})" for guild in ctx.bot.guilds]
+        chunked_data = self.chunk_server_data(server_data)
+
+        await paginate_servers(ctx, chunked_data)
 
     listservers.example_usage = """
     `{prefix}listservers` - display the servers the bot is in. 
