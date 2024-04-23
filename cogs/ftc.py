@@ -247,80 +247,74 @@ class FTCInfo(Cog):
     @ftc.command()
     @bot_has_permissions(embed_links=True)
     @app_commands.describe(team_num="The number of the team you're interested in getting info")
-    async def team(self, ctx: DozerContext, team_num: int):
+    async def team(self, ctx: DozerContext, team_num: int, season: int = None):
         """Get information on an FTC team by number."""
         if team_num < 1:
             await ctx.send("Invalid team number specified!")
             return
-        res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team_num)}))
+        if season < 2019 or season > FTCEventsClient.get_season():
+            await ctx.send("Invalid season! Data is only available for seasons after 2019.")
+        res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team_num)}), season)
         async with res:
             if res.status == 400:
-                await ctx.send(f"Team {team_num} either did not compete this season, or it does not exist!")
+                if season is None:
+                    await ctx.send(f"Team {team_num} either did not compete this season, or it does not exist!")
+                else:
+                    await ctx.send(f"Team {team_num} either did not compete in the {season} season, "
+                                   f"or it does not exist!")
                 return
             team_data = await res.json(content_type=None)
             if not team_data:
-                await ctx.send(f"FTC-Events returned nothing on request with HTTP response code {res.status}.")
-                return
-            team_data = team_data['teams'][0]
-
-            # many team entries lack a valid url
-            website = get_none_strip(team_data, 'website')
-            if website and not (website.startswith("http://") or website.startswith("https://")):
-                website = "http://" + website
-
-            e = discord.Embed(color=embed_color,
-                              title=f'FIRST® Tech Challenge Team {team_num}',
-                              url=f"https://ftc-events.firstinspires.org/{FTCEventsClient.get_season()}/team/{team_num}")
-            e.add_field(name='Name', value=get_none_strip(team_data, 'nameShort') or "_ _")
-            e.add_field(name='Rookie Year', value=get_none_strip(team_data, 'rookieYear') or "Unknown")
-            e.add_field(name='Location',
-                        value=', '.join((team_data['city'], team_data['stateProv'], team_data['country'])) or "Unknown")
+	@@ -277,34 +283,43 @@ async def team(self, ctx: DozerContext, team_num: int):
             e.add_field(name='Org/Sponsors', value=team_data.get('nameFull', "").strip() or "_ _")
             e.add_field(name='Website', value=website or 'n/a')
             e.add_field(name='FTCScout Page', value=f'https://ftcscout.org/teams/{team_num}')
+            e.add_field(name='Season', value=season)
 
             e.set_footer(
-                text="Team information from FTC-Events.")
+                text="Team information from FTC-Events")
 
             await ctx.send(embed=e)
 
-    
     @command()
     @bot_has_permissions(embed_links=True)
     @app_commands.describe(team_num="The number of the team you're interested in getting info")
-    async def topr(self, ctx: DozerContext, team_num: int):
+    async def topr(self, ctx: DozerContext, team_num: int, season: int = None):
         """Get information with OPR on an FTC team by number."""
-        await self.opr.callback(self, ctx, team_num)
-
+        await self.opr.callback(self, ctx, team_num, season)
 
     @ftc.command(aliases=["topr", "ftcopr"])
     @bot_has_permissions(embed_links=True)
-    @app_commands.describe(team_num="The number of the team you're interested in getting info")
-    async def opr(self, ctx: DozerContext, team_num: int):
+    @app_commands.describe(team_num="The number of the team you're interested in getting info",
+                           season="(Optional) The season to get the stats, by starting year")
+    async def opr(self, ctx: DozerContext, team_num: int, season: int = None):
         """Get information with OPR on an FTC team by number."""
         if team_num < 1:
             await ctx.send("Invalid team number specified!")
             return
-        res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team_num)}))
-        sres = await self.scparser.req(f"teams/{team_num}/quick-stats")
+        if season < 2019 or season > FTCEventsClient.get_season():
+            await ctx.send("Invalid season! Data is only available for seasons after 2019.")
+        res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team_num)}), season)
+        if season is None:
+            sres = await self.scparser.req(f"teams/{team_num}/quick-stats")
+        else:
+            sres = await self.scparser.req(f"teams/{team_num}/quick-stats?season={season}")
         async with res, sres:
             if res.status == 400:
-                await ctx.send(f"Team {team_num} either did not compete this season, or it does not exist!")
+                if season is None:
+                    await ctx.send(f"Team {team_num} either did not compete this season, or it does not exist!")
+                else:
+                    await ctx.send(f"Team {team_num} either did not compete in the {season} season, "
+                                   f"or it does not exist!")
                 return
             team_data = await res.json(content_type=None)
             if not team_data:
-                await ctx.send(f"FTC-Events returned nothing on request with HTTP response code {res.status}.")
-                return
-            team_data = team_data['teams'][0]
-
-            # many team entries lack a valid url
-            website = get_none_strip(team_data, 'website')
-            if website and not (website.startswith("http://") or website.startswith("https://")):
-                website = "http://" + website
+	@@ -319,7 +334,8 @@ async def opr(self, ctx: DozerContext, team_num: int):
 
             e = discord.Embed(color=embed_color,
                               title=f'FIRST® Tech Challenge Team {team_num}',
-                              url=f"https://ftc-events.firstinspires.org/{FTCEventsClient.get_season()}/team/{team_num}")
+                              url=f"https://ftc-events.firstinspires.org/{FTCEventsClient.get_season()}/"
+                                  f"team/{team_num}")
             e.add_field(name='Name', value=get_none_strip(team_data, 'nameShort') or "_ _")
             e.add_field(name='Rookie Year', value=get_none_strip(team_data, 'rookieYear') or "Unknown")
             e.add_field(name='Location',
@@ -329,24 +323,30 @@ class FTCInfo(Cog):
             e.add_field(name='Org/Sponsors', value=team_data.get('nameFull', "").strip() or "_ _")
             e.add_field(name='Website', value=website or 'n/a')
             e.add_field(name='FTCScout Page', value=f'https://ftcscout.org/teams/{team_num}')
-
             if sres.status != 404:
                 team_stats = await sres.json(content_type=None)
                 e.add_field(name='Total OPR',
-                            value=f"{team_stats['tot']['value']:.0f}, rank #{team_stats['tot']['rank']:.0f}")
+                            value=f"{team_stats['tot']['value']:.1f}, rank #{team_stats['tot']['rank']:.0f} "
+                                  f" ({(1 - (team_stats['tot']['rank']- 1) / (team_stats['count'] - 1)) * 100:.1f}%)")
                 e.add_field(name='Auto OPR',
-                            value=f"{team_stats['auto']['value']:.0f}, rank #{team_stats['auto']['rank']:.0f}")
+                            value=f"{team_stats['auto']['value']:.1f}, rank #{team_stats['auto']['rank']:.0f}"
+                                  f" ({(1 - (team_stats['auto']['rank'] - 1) / (team_stats['count'] - 1)) * 100:.1f}%)")
                 e.add_field(name='Teleop OPR',
-                            value=f"{team_stats['dc']['value']:.0f}, rank #{team_stats['dc']['rank']:.0f}")
+                            value=f"{team_stats['dc']['value']:.1f}, rank #{team_stats['dc']['rank']:.0f}"
+                                  f" ({(1 - (team_stats['dc']['rank'] - 1) / (team_stats['count'] - 1)) * 100:.1f}%)")
                 e.add_field(name='Endgame OPR',
-                            value=f"{team_stats['eg']['value']:.0f}, rank #{team_stats['eg']['rank']:.0f}")
+                            value=f"{team_stats['eg']['value']:.1f}, rank #{team_stats['eg']['rank']:.0f}"
+                                  f" ({(1 - (team_stats['eg']['rank'] - 1) / (team_stats['count'] - 1)) * 100:.1f}%)")
+
+            e.add_field(name='Season',
+                        value=f"{season}")
 
             e.set_footer(
-                text="Team information from FTC-Events. "
-                     "OPR data from FTCScout.")
+                text="Team information from FTC-Events |  "
+                     "OPR data from FTCScout", )
 
             await ctx.send(embed=e)
-
+            
     team.example_usage = """
     `{prefix}ftc team 7244` - show information on team 7244, Out of the Box Robotics
     """
