@@ -265,7 +265,22 @@ class FTCInfo(Cog):
                 return
             team_data = await res.json(content_type=None)
             if not team_data:
-	@@ -277,34 +283,43 @@ async def team(self, ctx: DozerContext, team_num: int):
+                await ctx.send(f"FTC-Events returned nothing on request with HTTP response code {res.status}.")
+                return
+            team_data = team_data['teams'][0]
+
+            # many team entries lack a valid url
+            website = get_none_strip(team_data, 'website')
+            if website and not (website.startswith("http://") or website.startswith("https://")):
+                website = "http://" + website
+
+            e = discord.Embed(color=embed_color,
+                              title=f'FIRST® Tech Challenge Team {team_num}',
+                              url=f"https://ftc-events.firstinspires.org/{FTCEventsClient.get_season()}/team/{team_num}")
+            e.add_field(name='Name', value=get_none_strip(team_data, 'nameShort') or "_ _")
+            e.add_field(name='Rookie Year', value=get_none_strip(team_data, 'rookieYear') or "Unknown")
+            e.add_field(name='Location',
+                        value=', '.join((team_data['city'], team_data['stateProv'], team_data['country'])) or "Unknown")
             e.add_field(name='Org/Sponsors', value=team_data.get('nameFull', "").strip() or "_ _")
             e.add_field(name='Website', value=website or 'n/a')
             e.add_field(name='FTCScout Page', value=f'https://ftcscout.org/teams/{team_num}')
@@ -309,7 +324,14 @@ class FTCInfo(Cog):
                 return
             team_data = await res.json(content_type=None)
             if not team_data:
-	@@ -319,7 +334,8 @@ async def opr(self, ctx: DozerContext, team_num: int):
+                await ctx.send(f"FTC-Events returned nothing on request with HTTP response code {res.status}.")
+                return
+            team_data = team_data['teams'][0]
+
+            # many team entries lack a valid url
+            website = get_none_strip(team_data, 'website')
+            if website and not (website.startswith("http://") or website.startswith("https://")):
+                website = "http://" + website
 
             e = discord.Embed(color=embed_color,
                               title=f'FIRST® Tech Challenge Team {team_num}',
@@ -323,6 +345,7 @@ class FTCInfo(Cog):
             e.add_field(name='Org/Sponsors', value=team_data.get('nameFull', "").strip() or "_ _")
             e.add_field(name='Website', value=website or 'n/a')
             e.add_field(name='FTCScout Page', value=f'https://ftcscout.org/teams/{team_num}')
+
             if sres.status != 404:
                 team_stats = await sres.json(content_type=None)
                 e.add_field(name='Total OPR',
@@ -346,7 +369,7 @@ class FTCInfo(Cog):
                      "OPR data from FTCScout", )
 
             await ctx.send(embed=e)
-            
+
     team.example_usage = """
     `{prefix}ftc team 7244` - show information on team 7244, Out of the Box Robotics
     """
