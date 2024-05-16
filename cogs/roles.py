@@ -20,22 +20,17 @@ from .moderation import MemberRole
 blurple = discord.Color.blurple()
 
 
-class Roles(commands.Cog):
+class Roles(Cog):
     """Commands for role management."""
 
-    def __init__(self, bot: commands.Bot) -> None:
-        self.bot = bot
-        for command in self.giveme.walk_commands():
-            @command.before_invoke
+    def __init__(self, bot: commands.Bot):
+        super().__init__(bot)
+        for loop_command in self.giveme.walk_commands():
+            @loop_command.before_invoke  # pylint: disable=cell-var-from-loop
             async def givemeautopurge(self, ctx: DozerContext):
                 """Before invoking a giveme command, run a purge"""
                 if await self.ctx_purge(ctx):
                     await ctx.send("Purged missing roles")
-
-    @staticmethod
-    def normalize(name):
-        """Normalizes a role for consistency in the DB."""
-        return name.strip().casefold()
 
     @staticmethod
     def calculate_epoch_time(time_string: str):
@@ -46,7 +41,8 @@ class Roles(commands.Cog):
         return time_release
 
     @staticmethod
-    async def safe_message_fetch(ctx, menu = None, channel = None, message_id = None):
+    async def safe_message_fetch(ctx: DozerContext, menu = None, channel: discord.TextChannel = None,
+                                 message_id: int = None):
         """Used to safely get a message and raise an error message cannot be found"""
         try:
             if menu:
@@ -61,13 +57,13 @@ class Roles(commands.Cog):
             raise BadArgument("That message does not exist or is not in this channel!")
 
     @staticmethod
-    async def add_to_message(message, entry):
+    async def add_to_message(message: discord.Message, entry):
         """Adds a reaction role to a message"""
         await message.add_reaction(entry.reaction)
         await entry.update_or_add()
 
     @staticmethod
-    async def del_from_message(message, entry):
+    async def del_from_message(message: discord.Message, entry):
         """Removes a reaction from a message"""
         await message.clear_reaction(entry.reaction)
 
@@ -79,23 +75,23 @@ class Roles(commands.Cog):
             self.bot.loop.create_task(self.removal_timer(record))
 
     @Cog.listener()
-    async def on_raw_message_delete(self, payload):
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
         """Used to remove dead reaction role entries"""
         message_id = payload.message_id
         await ReactionRole.delete(message_id = message_id)
         await RoleMenu.delete(message_id = message_id)
 
     @Cog.listener()
-    async def on_raw_reaction_add(self, payload):
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         """Raw API event for reaction add, passes event to action handler"""
         await self.on_raw_reaction_action(payload)
 
     @Cog.listener()
-    async def on_raw_reaction_remove(self, payload):
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
         """Raw API event for reaction remove, passes event to action handler"""
         await self.on_raw_reaction_action(payload)
 
-    async def on_raw_reaction_action(self, payload):
+    async def on_raw_reaction_action(self, payload: discord.RawReactionActionEvent):
         """Called whenever a reaction is added or removed"""
         message_id = payload.message_id
         reaction = str(payload.emoji)
@@ -117,14 +113,19 @@ class Roles(commands.Cog):
 
     async def removal_timer(self, record):
         """Asynchronous task that sleeps for a set time to remove a role from a member after a set period of time."""
+
         guild = self.bot.get_guild(int(record.guild_id))
         target = guild.get_member(int(record.target_id))
         target_role = guild.get_role(int(record.target_role_id))
         removal_time = record.removal_ts
+
         # Max function is used to make sure the delay is not negative
         time_delta = max(int(removal_time - time.time()), 1)
+
         await asyncio.sleep(time_delta)
+
         await target.remove_roles(target_role)
+
         await TempRoleTimerRecords.delete(id = record.id)
 
     @Cog.listener('on_guild_role_update')
@@ -145,7 +146,6 @@ class Roles(commands.Cog):
             await GiveableRole.delete(role_id = old.id)
 
     @Cog.listener('on_member_join')
-    @Cog.listener('on_member_join')
     async def on_member_join(self, member: discord.Member):
         """Restores a member's roles when they join if they have joined before."""
         me = member.guild.me
@@ -153,6 +153,7 @@ class Roles(commands.Cog):
         restore = await MissingRole.get_by(guild_id = member.guild.id, member_id = member.id)
         if len(restore) == 0:
             return  # New member - nothing to restore
+
         # try and prioritize the member role first for Speed
         member_role_id = None
         stg = await MemberRole.get_by(guild_id = member.guild.id)
@@ -164,6 +165,7 @@ class Roles(commands.Cog):
                 await member.add_roles(member_role)
             else:
                 member_role_id = None
+
         valid, cant_give, missing = set(), set(), set()
         for missing_role in restore:
             role = member.guild.get_role(missing_role.role_id)
@@ -176,9 +178,11 @@ class Roles(commands.Cog):
         for entry in restore:
             # Not missing anymore - remove the record to free up the primary key
             await MissingRole.delete(role_id = entry.role_id, member_id = entry.member_id)
+
         await member.add_roles(*valid)
         if not missing and not cant_give:
             return
+
         e = discord.Embed(title = f'Welcome back to the {member.guild.name} server, {member}!',
                           color = discord.Color.blue())
         if missing:
@@ -197,7 +201,7 @@ class Roles(commands.Cog):
             pass
 
     @Cog.listener('on_member_remove')
-    async def on_member_remove(self, member):
+    async def on_member_remove(self, member: discord.Member):
         """Saves a member's roles when they leave in case they rejoin."""
         guild_id = member.guild.id
         member_id = member.id
@@ -206,44 +210,41 @@ class Roles(commands.Cog):
                                     member_id = member_id)
             await db_member.update_or_add()
 
-    async def giveme_purge(self, role_id_list):
-        """Purges roles in the giveme database that no longer exist"""
-        for role in role_id_list:
+    async def giveme_purge(self, rolelist):
+        """Purges roles in the giveme database that no longer exist. The argument is a list of GiveableRole objects."""
+        for role in rolelist:
             dbrole = await GiveableRole.get_by(role_id = role.role_id)
             if dbrole:
                 await GiveableRole.delete(role_id = role.role_id)
 
-    async def ctx_purge(self, ctx):
+    async def ctx_purge(self, ctx: DozerContext):
         """Purges all giveme roles that no longer exist in a guild"""
         counter = 0
         roles = await GiveableRole.get_by(guild_id = ctx.guild.id)
-        guild_roles = []
-        role_id_list = []
+        guildroles = []
+        rolelist = []
         for i in ctx.guild.roles:
-            guild_roles.append(i.id)
-        for ent in roles:
-            if ent.role_id not in guild_roles:
-                role_id_list.append(ent.role_id)
+            guildroles.append(i.id)
+        for role in roles:
+            if role.role_id not in guildroles:
+                rolelist.append(role)
                 counter += 1
-        await self.giveme_purge(role_id_list)
+        await self.giveme_purge(rolelist)
         return counter
 
-    @Cog.listener("on_guild_role_delete")
-    async def on_guild_role_delete(self, role):
+    async def on_guild_role_delete(self, role: discord.Role):
         """Automatically delete giveme roles if they are deleted from the guild"""
-        rolelist = [role.id]
+        rolelist = [role]
         await self.giveme_purge(rolelist)
 
-    @commands.hybrid_group(invoke_without_command = True, case_insensitive = True)
+    @group(invoke_without_command = True)
     @bot_has_permissions(manage_roles = True)
-    @app_commands.describe(roles = "Roles you want")
-    async def giveme(self, ctx: DozerContext, *, roles: discord.Role):
+    async def giveme(self, ctx: DozerContext, *, roles):
         """Give you one or more giveable roles, separated by commas."""
-        norm_names = set(self.normalize(name) for name in roles.split(','))
-
-        giveable_ids = set(gr.role_id for gr in await GiveableRole.get_by(guild_id = ctx.guild.id))
-        valid = set(
-            role for role in ctx.guild.roles if role.id in giveable_ids and self.normalize(role.name) in norm_names)
+        norm_names = [self.normalize(name) for name in roles.split(',')]
+        giveable_ids = [tup.role_id for tup in await GiveableRole.get_by(guild_id = ctx.guild.id) if
+                        tup.norm_name in norm_names]
+        valid = set(role for role in ctx.guild.roles if role.id in giveable_ids)
 
         already_have = valid & set(ctx.author.roles)
         given = valid - already_have
@@ -252,44 +253,7 @@ class Roles(commands.Cog):
         e = discord.Embed(color = discord.Color.blue())
         if given:
             given_names = sorted((role.name for role in given), key = str.casefold)
-            e.add_field(name = 'Gave you {} role(s)!'.format(len(given)), value = '\n'.join(given_names),
-                        inline = False)
-        if already_have:
-            already_have_names = sorted((role.name for role in already_have), key = str.casefold)
-            e.add_field(name = 'You already have {} role(s)!'.format(len(already_have)),
-                        value = '\n'.join(already_have_names), inline = False)
-        extra = len(norm_names) - len(valid)
-        if extra > 0:
-            e.add_field(name = '{} role(s) could not be found!'.format(extra),
-                        value = 'Use `{0.prefix}{0.invoked_with} list` to find valid giveable roles!'.format(ctx),
-                        inline = False)
-        await ctx.send(embed = e)
-
-    giveme.example_usage = """
-    `{prefix}giveme Java` - gives you the role called Java, if it exists
-    `{prefix}giveme Java, Python` - gives you the roles called Java and Python, if they exist
-    """
-
-    @giveme.command(name = 'role')
-    @bot_has_permissions(manage_roles = True)
-    @app_commands.describe(roles = "Roles you want")
-    async def giveme_roles(self, ctx: DozerContext, *, roles: discord.Role):
-        """Give you one or more giveable roles, separated by commas."""
-        norm_names = set(self.normalize(name) for name in roles.split(','))
-
-        giveable_ids = set(gr.role_id for gr in await GiveableRole.get_by(guild_id = ctx.guild.id))
-        valid = set(
-            role for role in ctx.guild.roles if role.id in giveable_ids and self.normalize(role.name) in norm_names)
-
-        already_have = valid & set(ctx.author.roles)
-        given = valid - already_have
-        await ctx.author.add_roles(*given)
-
-        e = discord.Embed(color = discord.Color.blue())
-        if given:
-            given_names = sorted((role.name for role in given), key = str.casefold)
-            e.add_field(name = f'Gave you {len(given)} role(s)!', value = '\n'.join(given_names),
-                        inline = False)
+            e.add_field(name = f'Gave you {len(given)} role(s)!', value = '\n'.join(given_names), inline = False)
         if already_have:
             already_have_names = sorted((role.name for role in already_have), key = str.casefold)
             e.add_field(name = f'You already have {len(already_have)} role(s)!',
@@ -299,12 +263,41 @@ class Roles(commands.Cog):
             e.add_field(name = f'{extra} role(s) could not be found!',
                         value = f'Use `{ctx.prefix}{ctx.invoked_with} list` to find valid giveable roles!',
                         inline = False)
-        await ctx.send(embed = e)
+        msg = await ctx.send(embed = e)
+        try:
+            await msg.add_reaction("❌")
+        except discord.Forbidden:
+            return
+        try:
+            await self.bot.wait_for('reaction_add', timeout = 30, check = lambda reaction, reactor:
+            reaction.emoji == "❌" and reactor == ctx.author and reaction.message == msg)
+            try:
+                await msg.delete()
+            except discord.HTTPException:
+                logger.debug(
+                    f"Unable to delete message to {ctx.member} in guild {ctx.guild} Reason: HTTPException")
+            try:
+                await ctx.message.delete()
+            except discord.Forbidden:
+                pass
+        except asyncio.TimeoutError:
+            try:
+                await msg.clear_reactions()
+            except discord.HTTPException:
+                logger.debug(
+                    f"Unable to clear reactions from message in guild {ctx.guild} Reason: HTTPException")
+            return
 
-    giveme_roles.example_usage = """
+    giveme.example_usage = """
     `{prefix}giveme Java` - gives you the role called Java, if it exists
     `{prefix}giveme Java, Python` - gives you the roles called Java and Python, if they exist
     """
+
+    @giveme.command()
+    @bot_has_permissions(manage_roles = True)
+    async def role(self, ctx: DozerContext, roles):
+        """Give you one or more giveable roles, separated by commas."""
+        await self.giveme(ctx, roles = roles)
 
     @giveme.command()
     @bot_has_permissions(manage_roles = True)
@@ -312,14 +305,154 @@ class Roles(commands.Cog):
     async def purge(self, ctx: DozerContext):
         """Force a purge of giveme roles that no longer exist in the guild"""
         counter = await self.ctx_purge(ctx)
-        await ctx.send("Purged {} role(s)".format(counter))
+        await ctx.send(f"Purged {counter} role(s)")
+
+    @giveme.command()
+    @bot_has_permissions(manage_roles = True)
+    @has_permissions(manage_guild = True)
+    async def add(self, ctx: DozerContext, *, name: str):
+        """Makes an existing role giveable, or creates one if it doesn't exist. Name must not contain commas.
+        Similar to create, but will use an existing role if one exists."""
+        if ',' in name:
+            raise BadArgument('giveable role names must not contain commas!')
+        norm_name = self.normalize(name)
+        settings = await GiveableRole.get_by(guild_id = ctx.guild.id, norm_name = norm_name)
+        if settings:
+            raise BadArgument('that role already exists and is giveable!')
+        candidates = [role for role in ctx.guild.roles if self.normalize(role.name) == norm_name]
+
+        if not candidates:
+            role = await ctx.guild.create_role(name = name, reason = f'Giveable role created by {ctx.author}')
+        elif len(candidates) == 1:
+            role = candidates[0]
+        else:
+            raise BadArgument(f'{len(candidates)} roles with that name exist!')
+        await GiveableRole.from_role(role).update_or_add()
+        await ctx.send(f'Role "{role.name}" added! Use `{ctx.prefix}{ctx.command.parent} {role.name}` to get it!')
+
+    add.example_usage = """
+    `{prefix}giveme add Java` - creates or finds a role named "Java" and makes it giveable
+    `{prefix}giveme Java` - gives you the Java role that was just found or created
+    """
+
+    @giveme.command()
+    @bot_has_permissions(manage_roles = True)
+    @has_permissions(manage_guild = True)
+    async def create(self, ctx: DozerContext, *, name: str):
+        """Create a giveable role. Name must not contain commas.
+        Similar to add, but will always create a new role."""
+        if ',' in name:
+            raise BadArgument('giveable role names must not contain commas!')
+        norm_name = self.normalize(name)
+        settings = await GiveableRole.get_by(guild_id = ctx.guild.id, norm_name = norm_name)
+        if not settings:
+            role = await ctx.guild.create_role(name = name, reason = f'Giveable role created by {ctx.author}')
+            settings = GiveableRole.from_role(role)
+            await settings.update_or_add()
+            await ctx.send(f'Role "{role.name}" created! Use `{ctx.prefix}{ctx.command.parent} {role.name}` to get it!')
+
+        else:
+            raise BadArgument('that role already exists and is giveable!')
+
+    create.example_usage = """
+    `{prefix}giveme create Python` - creates a role named "Python" and makes it giveable
+    `{prefix}giveme Python` - gives you the Python role that was just created
+    """
+
+    @giveme.command()
+    @bot_has_permissions(manage_roles = True)
+    async def remove(self, ctx: DozerContext, *, roles):
+        """Removes multiple giveable roles from you. Names must be separated by commas."""
+        norm_names = [self.normalize(name) for name in roles.split(',')]
+        query = await GiveableRole.get_by(guild_id = ctx.guild.id)
+        roles_to_remove = []
+        for role in query:
+            if role.norm_name in norm_names:
+                roles_to_remove.append(role)
+        removable_ids = [tup.role_id for tup in roles_to_remove]
+        valid = set(role for role in ctx.guild.roles if role.id in removable_ids)
+
+        removed = valid & set(ctx.author.roles)
+        dont_have = valid - removed
+        await ctx.author.remove_roles(*removed)
+
+        e = discord.Embed(color = discord.Color.blue())
+        if removed:
+            removed_names = sorted((role.name for role in removed), key = str.casefold)
+            e.add_field(name = f'Removed {len(removed)} role(s)!', value = '\n'.join(removed_names), inline = False)
+        if dont_have:
+            dont_have_names = sorted((role.name for role in dont_have), key = str.casefold)
+            e.add_field(name = f'You didn\'t have {len(dont_have)} role(s)!', value = '\n'.join(dont_have_names),
+                        inline = False)
+        extra = len(norm_names) - len(valid)
+        if extra > 0:
+            e.add_field(name = f'{extra} role(s) could not be found!',
+                        value = f'Use `{ctx.prefix}{ctx.invoked_with} list` to find valid giveable roles!',
+                        inline = False)
+        msg = await ctx.send(embed = e)
+        try:
+            await msg.add_reaction("❌")
+        except discord.Forbidden:
+            return
+        try:
+            await self.bot.wait_for('reaction_add', timeout = 30, check = lambda reaction, reactor:
+            reaction.emoji == "❌" and reactor == ctx.author and reaction.message == msg)
+            try:
+                await msg.delete()
+            except discord.HTTPException:
+                logger.debug(
+                    f"Unable to delete message to {ctx.member} in guild {ctx.guild} Reason: HTTPException")
+            try:
+                await ctx.message.delete()
+            except discord.Forbidden:
+                pass
+        except asyncio.TimeoutError:
+            try:
+                await msg.clear_reactions()
+            except discord.HTTPException:
+                logger.debug(
+                    f"Unable to clear reactions from message to {ctx.member} in guild {ctx.guild} Reason: HTTPException")
+            return
+
+    remove.example_usage = """
+    `{prefix}giveme remove Java` - removes the role called "Java" from you (if it can be given with `{prefix}giveme`)
+    `{prefix}giveme remove Java, Python` - removes the roles called "Java" and "Python" from you
+    """
+
+    @giveme.command()
+    @bot_has_permissions(manage_roles = True)
+    @has_permissions(manage_guild = True)
+    async def delete(self, ctx: DozerContext, *, name: str):
+        """Deletes and removes a giveable role."""
+        if ',' in name:
+            raise BadArgument('this command only works with single roles!')
+        norm_name = self.normalize(name)
+        valid_ids = set(role.id for role in ctx.guild.roles)
+        roles = await GiveableRole.get_by(guild_id = ctx.guild.id, norm_name = norm_name)
+        valid_roles = []
+        for role_option in roles:
+            if role_option.role_id in valid_ids:
+                valid_roles.append(role_option)
+        if len(valid_roles) == 0:
+            raise BadArgument('that role does not exist or is not giveable!')
+        elif len(valid_roles) > 1:
+            raise BadArgument('multiple giveable roles with that name exist!')
+        else:
+            role = ctx.guild.get_role(valid_roles[0].role_id)
+            await GiveableRole.delete(guild_id = ctx.guild.id, norm_name = valid_roles[0].norm_name)
+            await role.delete(reason = f'Giveable role deleted by {ctx.author}')
+            await ctx.send(f'Role "{role}" deleted!')
+
+    delete.example_usage = """
+    `{prefix}giveme delete Java` - deletes the role called "Java" if it's giveable (automatically removes it from all members)
+    """
 
     @cooldown(1, 10, BucketType.channel)
-    @giveme.group(name = 'list', invoke_without_command = True)
+    @giveme.command(name = 'list')
     @bot_has_permissions(manage_roles = True)
-    async def list_roles(self, ctx):
+    async def list_roles(self, ctx: DozerContext):
         """Lists all giveable roles for this server."""
-        names = [ctx.guild.get_role(ent.role_id).name for ent in await GiveableRole.get_by(guild_id = ctx.guild.id)]
+        names = [tup.name for tup in await GiveableRole.get_by(guild_id = ctx.guild.id)]
         e = discord.Embed(title = 'Roles available to self-assign', color = discord.Color.blue())
         e.description = '\n'.join(sorted(names, key = str.casefold))
         await ctx.send(embed = e)
@@ -328,39 +461,20 @@ class Roles(commands.Cog):
     `{prefix}giveme list` - lists all giveable roles
     """
 
-    @list_roles.command()
+    @staticmethod
+    def normalize(name):
+        """Normalizes a role for consistency in the DB."""
+        return name.strip().casefold()
+
+    @giveme.command()
     @bot_has_permissions(manage_roles = True)
     @has_permissions(manage_guild = True)
-    @app_commands.describe(role = "Role you want to add to the giveable roles list")
-    async def add(self, ctx: DozerContext, role: discord.Role):
-        """Makes an existing role giveable, or creates one if it doesn't exist. Name must not contain commas.
-        Similar to create, but will use an existing role if one exists."""
-        if ',' in role.name:
-            raise BadArgument('giveable role names must not contain commas!')
-        norm_name = self.normalize(role.name)
-
-        if await GiveableRole.get_by(role_id = role.id):
-            raise BadArgument('that role already exists and is giveable!')
-        candidates = [role for role in ctx.guild.roles if self.normalize(role.name) == norm_name]
-
-        if len(candidates) > 1:
-            raise BadArgument('{} roles with that name exist!'.format(len(candidates)))
-
-        await GiveableRole.from_role(role).update_or_add()
-        await ctx.send(f'Role "{role.name}" added! Use `{ctx.prefix}giveme {role.name}` to get it!')
-
-    add.example_usage = """
-    `{prefix}giveme list add Java` - creates or finds a role named "Java" and makes it giveable
-    `{prefix}giveme Java` - gives you the Java role that was just found or created
-    """
-
-    @list_roles.command(name = "remove")
-    @bot_has_permissions(manage_roles = True)
-    @has_permissions(manage_guild = True)
-    @app_commands.describe(role = "Role you want to remove from the giveable roles list")
-    async def removefromlist(self, ctx: DozerContext, role: discord.Role):
+    async def removefromlist(self, ctx: DozerContext, *, name: str):
         """Deletes and removes a giveable role."""
-        norm_name = self.normalize(role.name)
+        # Honestly this is the giveme delete command but modified to only delete from the DB
+        if ',' in name:
+            raise BadArgument('this command only works with single roles!')
+        norm_name = self.normalize(name)
         valid_ids = set(role.id for role in ctx.guild.roles)
         roles = await GiveableRole.get_by(guild_id = ctx.guild.id)
         valid_roles = []
@@ -373,67 +487,34 @@ class Roles(commands.Cog):
             raise BadArgument('multiple giveable roles with that name exist!')
         else:
             await GiveableRole.delete(guild_id = ctx.guild.id, norm_name = valid_roles[0].norm_name)
-            await ctx.send(f'Role "{role.name}" deleted from list!', ephemeral = True)
+            await ctx.send(f'Role "{name}" deleted from list!')
 
-    removefromlist.example_usage = """
-    `{prefix}giveme list remove Java` - removes the role "Java" from the list of giveable roles but does not remove it from the server or members who have it 
+    delete.example_usage = """
+    `{prefix}giveme removefromlist Java` - removes the role "Java" from the list of giveable roles but does not remove it from the server or members who have it 
     """
 
-    @giveme.command()
-    @bot_has_permissions(manage_roles = True)
-    @app_commands.describe(roles = "Roles you want to remove from yourself")
-    async def remove(self, ctx: DozerContext, *, roles):
-        """Removes multiple giveable roles from you. Names must be separated by commas."""
-        norm_names = [self.normalize(name) for name in roles.split(',')]
-        giveable_ids = set(gr.role_id for gr in await GiveableRole.get_by(guild_id = ctx.guild.id))
-        valid = set(
-            role for role in ctx.guild.roles if role.id in giveable_ids and self.normalize(role.name) in norm_names)
-
-        removed = valid & set(ctx.author.roles)
-        dont_have = valid - removed
-        await ctx.author.remove_roles(*removed)
-
-        e = discord.Embed(color = discord.Color.blue())
-        if removed:
-            removed_names = sorted((role.name for role in removed), key = str.casefold)
-            e.add_field(name = 'Removed {} role(s)!'.format(len(removed)), value = '\n'.join(removed_names),
-                        inline = False)
-        if dont_have:
-            dont_have_names = sorted((role.name for role in dont_have), key = str.casefold)
-            e.add_field(name = 'You didn\'t have {} role(s)!'.format(len(dont_have)),
-                        value = '\n'.join(dont_have_names),
-                        inline = False)
-        extra = len(norm_names) - len(valid)
-        if extra > 0:
-            e.add_field(name = '{} role(s) could not be found!'.format(extra),
-                        value = 'Use `{0.prefix}giveme list` to find valid giveable roles!'.format(ctx),
-                        inline = False)
-        await ctx.send(embed = e)
-
-    remove.example_usage = """
-    `{prefix}giveme remove Java` - removes the role called "Java" from you (if it can be given with `{prefix}giveme`)
-    `{prefix}giveme remove Java, Python` - removes the roles called "Java" and "Python" from you
-    """
-
-    @commands.command()
+    @command()
     @bot_has_permissions(manage_roles = True, embed_links = True)
     @has_permissions(manage_roles = True)
-    @app_commands.describe(member = "Member you want to give a role to", role = "Role you want to give to the member")
     async def tempgive(self, ctx: DozerContext, member: discord.Member, length, *, role: discord.Role):
         """Temporarily gives a member a role for a set time. Not restricted to giveable roles."""
         if role > ctx.author.top_role:
             raise BadArgument('Cannot give roles higher than your top role!')
+
         if role > ctx.me.top_role:
             raise BadArgument('Cannot give roles higher than my top role!')
+
         remove_time = self.calculate_epoch_time(length)
         if remove_time < time.time():
             raise BadArgument('Cannot use negative role time')
+
         ent = TempRoleTimerRecords(
             guild_id = member.guild.id,
             target_id = member.id,
             target_role_id = role.id,
             removal_ts = remove_time
         )
+
         await member.add_roles(role)
         await ent.update_or_add()
         self.bot.loop.create_task(self.removal_timer(ent))
@@ -442,60 +523,42 @@ class Roles(commands.Cog):
         e.set_footer(text = 'Triggered by ' + escape_markdown(ctx.author.display_name))
         await ctx.send(embed = e)
 
-    tempgive.example_usage = """	
-            `{prefix}tempgive cooldude#1234 1h Java` - gives cooldude any role, giveable or not, named Java for one hour	
-            """
+    tempgive.example_usage = """
+        `{prefix}tempgive cooldude#1234 1h Java` - gives cooldude any role, giveable or not, named Java for one hour
+        """
 
-    @commands.hybrid_command()
-    @bot_has_permissions(manage_roles = True)
+    @command()
+    @bot_has_permissions(manage_roles = True, embed_links = True)
     @has_permissions(manage_roles = True)
-    @app_commands.describe(member = "Member you want to give a role to", role = "Role you want to give to the member")
     async def give(self, ctx: DozerContext, member: discord.Member, *, role: discord.Role):
         """Gives a member a role. Not restricted to giveable roles."""
         if role > ctx.author.top_role:
             raise BadArgument('Cannot give roles higher than your top role!')
         await member.add_roles(role)
-        await ctx.send(f'Successfully gave {member} `{role}`!')
+        e = discord.Embed(color = blurple)
+        e.add_field(name = 'Success!', value = f'Gave {role} to {member}!')
+        e.set_footer(text = 'Triggered by ' + escape_markdown(ctx.author.display_name))
+        await ctx.send(embed = e)
 
     give.example_usage = """
     `{prefix}give cooldude#1234 Java` - gives cooldude any role, giveable or not, named Java
     """
 
-    @commands.hybrid_command()
-    @bot_has_permissions(manage_roles = True)
+    @command()
+    @bot_has_permissions(manage_roles = True, embed_links = True)
     @has_permissions(manage_roles = True)
-    @app_commands.describe(member = "Member you want to remove a role from",
-                           role = "Role you want to remove from the member")
     async def take(self, ctx: DozerContext, member: discord.Member, *, role: discord.Role):
         """Takes a role from a member. Not restricted to giveable roles."""
         if role > ctx.author.top_role:
             raise BadArgument('Cannot take roles higher than your top role!')
         await member.remove_roles(role)
-        await ctx.send(f'Successfully took `{role}` from {member}!')
+        e = discord.Embed(color = blurple)
+        e.add_field(name = 'Success!', value = f'Took {role} from {member}!')
+        e.set_footer(text = 'Triggered by ' + escape_markdown(ctx.author.display_name))
+        await ctx.send(embed = e)
 
     take.example_usage = """
     `{prefix}take cooldude#1234 Java` - takes any role named Java, giveable or not, from cooldude
-    """
-
-    @commands.hybrid_command()
-    @bot_has_permissions(manage_roles = True)
-    @app_commands.describe(role = "Role you want to see/change", color = "Color you want to change the role to")
-    async def rolecolor(self, ctx: DozerContext, role: discord.Role, color: discord.Color = None):
-        """Displays the color of a given role, or sets it to a new value."""
-        # required perms are conditional based on arguments
-        if color is not None:
-            if not ctx.channel.permissions_for(ctx.author).manage_roles:
-                raise MissingPermissions(["manage_roles"])
-            await role.edit(color = color)
-            message = f"Set role color of `{role}` to **{color}**!"
-        else:
-            message = f"The role color of `{role}` is **{role.color}**"
-
-        await ctx.send(embed = discord.Embed(description = message, color = role.color))
-
-    rolecolor.example_usage = """
-    `{prefix}rolecolor "Simbot Red"` - displays the color of the "Simbot Red" role in hexcode format
-    `{prefix}rolecolor Bolb #FCC21B` - set the color of the "Bolb" role to #FCC21B
     """
 
     async def update_role_menu(self, ctx: DozerContext, menu):
@@ -511,8 +574,7 @@ class Roles(commands.Cog):
             text = f"React to get a role\nMenu ID: {menu_message.id}, Total roles: {len(menu_entries)}")
         await menu_message.edit(embed = menu_embed)
 
-    @commands.hybrid_group(invoke_without_command = True, aliases = ["reactionrole", "reactionroles"],
-                           case_insensitive = True)
+    @group(invoke_without_command = True, aliases = ["reactionrole", "reactionroles"])
     @bot_has_permissions(manage_roles = True, embed_links = True)
     @has_permissions(manage_roles = True)
     @guild_only()
@@ -531,7 +593,7 @@ class Roles(commands.Cog):
         unbound_reactions = await db.Pool.fetch(
             f"""SELECT * FROM {ReactionRole.__tablename__} WHERE message_id != all($1)"""
             f""" and guild_id = $2;""", boundroles, ctx.guild.id)
-        combined_unbound = {}  # The following code is to group individual reaction role entries into the messages they are associated with
+        combined_unbound = {}  # The following code is too group individual reaction role entries into the messages they are associated with
         if unbound_reactions:
             for unbound in unbound_reactions:
                 guild_id = unbound.get("guild_id")
@@ -550,22 +612,21 @@ class Roles(commands.Cog):
             link = f"https://discordapp.com/channels/{gid}/{cid}/{mid}"
             embed.add_field(name = f"Custom Message: {mid}", value = f"[Contains {total} role watchers]({link})",
                             inline = False)
-        embed.description = f"{ctx.bot.user.display_name} is tracking ({len(rolemenus) + len(combined_unbound)}) " \
+        embed.description = f"{escape_markdown(ctx.bot.user.display_name)} is tracking ({len(rolemenus) + len(combined_unbound)}) " \
                             f"reaction role message(s) in **{ctx.guild}**"
         await ctx.send(embed = embed)
 
     rolemenu.example_usage = """
     `{prefix}rolemenu createmenu #roles Example role menu`: Creates an empty role menu embed
-    `{prefix}rolemenu addrole <message id> @robots 🤖:` adds the reaction role 'robots' to the target message
+    `{prefix}rolemenu addrole <message id> @robots 🤖:` adds the reaction role 'robots' to the target message 
     `{prefix}rolemenu delrole <message id> @robots:` removes the reaction role 'robots' from the target message
     """
 
-    @rolemenu.command(aliases = ["create"])
+    @rolemenu.command()
     @bot_has_permissions(manage_roles = True, embed_links = True)
     @has_permissions(manage_roles = True)
     @guild_only()
-    @app_commands.describe(channel = "Channel to create the menu in", name = "Name of the menu")
-    async def createmenu(self, ctx: DozerContext, channel: discord.TextChannel, *, name):
+    async def createmenu(self, ctx: DozerContext, channel: discord.TextChannel, *, name: str):
         """Creates a blank reaction role menu"""
         menu_embed = discord.Embed(title = f"Role Menu: {name}", description = "React to get a role")
         message = await channel.send(embed = menu_embed)
@@ -596,13 +657,9 @@ class Roles(commands.Cog):
     @bot_has_permissions(manage_roles = True, embed_links = True)
     @has_permissions(manage_roles = True)
     @guild_only()
-    @app_commands.describe(message_id = "Message ID of the menu", role = "Role to add", channel = "Channel the menu "
-                                                                                                  "is in",
-                           emoji = "Emoji to add to the list")
     async def addrole(self, ctx: DozerContext, channel: typing.Optional[discord.TextChannel], message_id,
                       role: discord.Role,
                       emoji):
-
         """Adds a reaction role to a message or a role menu"""
         message_id = int(message_id)
         try:
@@ -666,12 +723,10 @@ class Roles(commands.Cog):
     @bot_has_permissions(manage_roles = True, embed_links = True)
     @has_permissions(manage_roles = True)
     @guild_only()
-    @app_commands.describe(message_id = "Message ID of the menu", role = "Role to remove",
-                           channel = "Channel the menu is in")
-    async def delrole(self, ctx: DozerContext, channel: typing.Optional[discord.TextChannel], message_id: int,
+    async def delrole(self, ctx: DozerContext, channel: typing.Optional[discord.TextChannel], message_id,
                       role: discord.Role):
         """Removes a reaction role from a message or a role menu"""
-
+        message_id = int(message_id)
         menu_return = await RoleMenu.get_by(guild_id = ctx.guild.id, message_id = message_id)
         menu = menu_return[0] if len(menu_return) else None
         message = await self.safe_message_fetch(ctx, menu = menu, channel = channel, message_id = message_id)
