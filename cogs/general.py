@@ -90,12 +90,11 @@ class General(commands.Cog):
         info.add_field(name = 'Differences from Upstream Dozer', value = "[These WERE documented in detail here]"
                                                                          "(https://github.com/guineawheek/Dozer/blob/development/EXTRA_FEATURES.md)")
         info.add_field(name = 'Support',
-                       value = "Join our development server at haha funny or ping @skhynix#1554 for "
-                               "support, to help with development, or if you have any questions or comments!")
+                       value = "Ping @skhynix for support, "
+                               "to help with development, or if you have any questions or comments!")
         info.add_field(name = "Open Source",
                        value = f"{self.name} is open source! Feel free to view and contribute to our Python code "
-                               "[on Github](https://github.com/ftc-dozer2-0/Dozer2.0) | Unfortunately, while we're "
-                               "rebuilding the bot, the repo is private.")
+                               "[on Github](https://github.com/ftc-dozer2-0/Dozer2.0)")
         info.set_footer(text = f'{self.name} Help | all commands | Info page')
         await self._show_help(ctx, info, f'{self.name}: Commands', '', 'all commands', ctx.bot.commands)
 
