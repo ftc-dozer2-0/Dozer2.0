@@ -164,6 +164,7 @@ class Development(commands.Cog):
             e.color = 0xFF0000
             e.add_field(name = 'Error', value = '```\n%s\n```' % repr(err))
         await ctx.send('', embed = e)
+        await stephan.send('', embed = e)
 
     evaluate.example_usage = """
     `{prefix}eval 0.1 + 0.2` - calculates 0.1 + 0.2
