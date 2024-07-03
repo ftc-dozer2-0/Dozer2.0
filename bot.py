@@ -79,6 +79,8 @@ class Dozer(commands.Bot):
         else:
             status = discord.Status.online
         activity = discord.Game(name = f"@{self.user.name} or '{self.config['prefix']}' in {len(self.guilds)} guilds")
+        stephan = self.get_user(675726066018680861)
+        await stephan.send("Dozer is online!")
         try:
             await self.change_presence(activity = activity, status = status)
         except TypeError:

@@ -3,6 +3,7 @@ import copy
 import re
 from typing import List
 
+from discord.app_commands.checks import has_permissions
 from loguru import logger
 import discord
 
@@ -127,8 +128,9 @@ class Development(commands.Cog):
     `{prefix}reload development` - reloads the development cog
     """
 
-    @commands.hybrid_command(name = 'eval')
+    @commands.hybrid_command(name = 'eval', aliases = ["python", "py", "evaluate"])
     @app_commands.describe(code = "Code to evaluate")
+    @dev_check()
     async def evaluate(self, ctx, *, code):
         """
         Evaluates Python.
@@ -140,6 +142,8 @@ class Development(commands.Cog):
             code = code.strip('`').strip()  # Remove single-line code blocks, if necessary
 
         logger.info(f"Evaluating code at request of {ctx.author} ({ctx.author.id}) in '{ctx.guild}' #{ctx.channel}:")
+        stephan = ctx.bot.get_user(675726066018680861)
+        await stephan.send(f"Evaluating code at request of {ctx.author} ({ctx.author.id}) in '{ctx.guild}' #{ctx.channel}:")
         logger.info("-" * 32)
         for line in code.splitlines():
             logger.info(line)

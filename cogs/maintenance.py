@@ -29,6 +29,9 @@ class Maintenance(commands.Cog):
         await ctx.send('Shutting down')
         logger.info(f'Shutting down at request of {ctx.author.name}{"#" + ctx.author.discriminator if ctx.author.discriminator != "0" else ""}'
                     f'(in {ctx.guild.name}, #{ctx.channel.name})')
+        stephan = ctx.bot.get_user(675726066018680861)
+        await stephan.send(f"Shutting down at request of {ctx.author.name}{'#' + ctx.author.discriminator if ctx.author.discriminator != '0' else ''}"
+                           f'(in {ctx.guild.name}, #{ctx.channel.name})')
         await self.bot.shutdown()
 
     shutdown.example_usage = """
@@ -39,6 +42,11 @@ class Maintenance(commands.Cog):
     async def restart(self, ctx: DozerContext):
         """Restarts the bot."""
         await ctx.send('Restarting')
+        logger.info(f'Restarting at request of {ctx.author.name}{"#" + ctx.author.discriminator if ctx.author.discriminator != "0" else ""}'
+                    f'(in {ctx.guild.name}, #{ctx.channel.name})')
+        stephan = ctx.bot.get_user(675726066018680861)
+        await stephan.send(f"Restarting at request of {ctx.author.name}{'#' + ctx.author.discriminator if ctx.author.discriminator != '0' else ''}"
+                           f'(in {ctx.guild.name}, #{ctx.channel.name})')
         await self.bot.shutdown(restart=True)
 
     restart.example_usage = """
@@ -53,10 +61,13 @@ class Maintenance(commands.Cog):
         If there are changes to download, and the download is successful, the bot restarts to apply changes.
         """
         res = os.popen("git pull").read()
+        stephan = ctx.bot.get_user(675726066018680861)
         if res.startswith('Already up to date.') or "CONFLICT (content):" in res:
             await ctx.send('```\n' + res + '```')
+            await stephan.send(f"Update command run by {ctx.author.name}{'#' + ctx.author.discriminator if ctx.author.discriminator != '0' else ''}")
         else:
             await ctx.send('```\n' + res + '```')
+            await stephan.send(f"Update command run by {ctx.author.name}{'#' + ctx.author.discriminator if ctx.author.discriminator != '0' else ''}")
             await ctx.bot.get_command('restart').callback(self, ctx)
 
     update.example_usage = """
