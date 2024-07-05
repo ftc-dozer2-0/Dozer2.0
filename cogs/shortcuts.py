@@ -183,21 +183,28 @@ class Shortcuts(commands.Cog):
 
             best_match = process.extractOne(remaining_content, all_shortcuts, scorer = fuzz.partial_ratio)
 
-            if best_match and best_match[1] > 90:  # Adjust the threshold as needed
+            if best_match and best_match[1] > 80:  # Adjust the threshold as needed
                 shortcut_name = best_match[0]
-
+                
                 # Ensure the command follows immediately after the prefix without any intervening characters
-                if remaining_content.startswith(shortcut_name.casefold()):
-                    shortcut = await ShortcutEntry.get_unique_by(guild_id = msg.guild.id, name = shortcut_name)
-                    if msg.reference:
-                        # Fetch the original message being replied to
-                        original_message = await msg.channel.fetch_message(msg.reference.message_id)
-                        if original_message:
-                            # Ping the original author in the new message
-                            await original_message.reply(f"{shortcut.value}")
-                    else:
-                        # Send the shortcut value without pinging if original message is not found
-                        await msg.channel.send(shortcut.value)
+                shortcut_match_index = process.extractOne(msg.content[start_index:], [shortcut_name], scorer=fuzz.partial_ratio)
+                
+                if shortcut_match_index and shortcut_match_index[1] > 80:
+                    matched_name = shortcut_match_index[0]
+                    match_index = msg.content[start_index:].find(matched_name)
+                    
+                    if match_index == 0:  # Ensure no intervening characters
+                        shortcut = await ShortcutEntry.get_unique_by(guild_id = msg.guild.id, name = shortcut_name)
+                        if msg.reference:
+                            # Fetch the original message being replied to
+                            original_message = await msg.channel.fetch_message(msg.reference.message_id)
+                            if original_message:
+                                # Ping the original author in the new message
+                                await original_message.reply(f"{shortcut.value}")
+                        else:
+                            # Send the shortcut value without pinging if original message is not found
+                            await msg.channel.send(shortcut.value)
+
         else:
             # If the prefix is not found in the message, do nothing
             pass
