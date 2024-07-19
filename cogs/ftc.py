@@ -307,11 +307,11 @@ class FTCInfo(Cog):
         if team_num < 1:
             await ctx.send("Invalid team number specified!")
             return
-        if season is None:
+        if season is None or season > FTCEventsClient.get_season():
             sres = await self.scparser.req(f"teams/{team_num}/quick-stats")
+        elif season < 2019:
+            return await ctx.send("Invalid season! Data is only available for seasons after 2019.")
         else:
-            if season < 2019 or season > FTCEventsClient.get_season():
-                return await ctx.send("Invalid season! Data is only available for seasons after 2019.")
             sres = await self.scparser.req(f"teams/{team_num}/quick-stats?season={season}")
         res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team_num)}), season)
 
@@ -361,9 +361,9 @@ class FTCInfo(Cog):
                 e.add_field(name='Endgame OPR',
                             value=f"{team_stats['eg']['value']:.1f}, rank #{team_stats['eg']['rank']:.0f}"
                                   f" ({(1 - (team_stats['eg']['rank'] - 1) / (team_stats['count'] - 1)) * 100:.1f}%)")
-
-            e.add_field(name='Season',
-                        value=f"{season}")
+            if season is not None:
+                e.add_field(name='Season',
+                            value=f"{season}")
 
             e.set_footer(
                 text="Team information from FTC-Events  |  "

@@ -142,8 +142,8 @@ class Development(commands.Cog):
             code = code.strip('`').strip()  # Remove single-line code blocks, if necessary
 
         logger.info(f"Evaluating code at request of {ctx.author} ({ctx.author.id}) in '{ctx.guild}' #{ctx.channel}:")
-        stephan = ctx.bot.get_user(675726066018680861)
-        await stephan.send(f"Evaluating code at request of {ctx.author} ({ctx.author.id}) in '{ctx.guild}' #{ctx.channel}:")
+        logchannel = await ctx.bot.get_guild(1088700196675919872).get_channel(1263728715398119476)
+        await logchannel.send(f"Evaluating code at request of {ctx.author} ({ctx.author.id}) in '{ctx.guild}' #{ctx.channel} (<#{ctx.channel.id}>):")
         logger.info("-" * 32)
         for line in code.splitlines():
             logger.info(line)
@@ -164,7 +164,7 @@ class Development(commands.Cog):
             e.color = 0xFF0000
             e.add_field(name = 'Error', value = '```\n%s\n```' % repr(err))
         await ctx.send('', embed = e)
-        await stephan.send('', embed = e)
+        await logchannel.send('', embed = e)
 
     evaluate.example_usage = """
     `{prefix}eval 0.1 + 0.2` - calculates 0.1 + 0.2
