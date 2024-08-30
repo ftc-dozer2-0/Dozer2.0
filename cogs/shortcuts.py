@@ -13,12 +13,14 @@ from context import DozerContext
 from ._utils import *
 
 
-class Shortcuts(commands.Cog):
+class Shortcuts(Cog):
+    """Adds simple text-shortcuts to the bot"""
     MAX_LEN = 20
-
     def __init__(self, bot):
         """cog init"""
-        pass
+        super().__init__(bot)
+        self.settings_cache = db.ConfigCache(ShortcutSetting)
+        self.cache = db.ConfigCache(ShortcutEntry)
 
     """Commands for managing shortcuts/macros."""
 
@@ -28,127 +30,94 @@ class Shortcuts(commands.Cog):
         """
         Display shortcut information
         """
-        setting = await ShortcutSetting.get_unique_by(guild_id = ctx.guild.id)
-        if setting is None:
-            await ctx.send("This server has no shortcut configuration.", ephemeral = True)
-            return
+        settings: ShortcutSetting = await self.settings_cache.query_one(guild_id=ctx.guild.id)
 
-        if not setting.approved:
-            await ctx.send("This server is not approved for shortcuts.", ephemeral = True)
-            return
+        if settings is None:
+            raise BadArgument("This server has no shortcut configuration, set a prefix.")
 
         e = discord.Embed()
         e.title = "Server shortcut configuration"
-        e.add_field(name = "Shortcut prefix", value = setting.prefix or "[unset]")
-        await ctx.send(embed = e, ephemeral = True)
+        e.add_field(name="Shortcut prefix", value=settings.prefix or "[unset]")
+        await ctx.send(embed=e)
 
+    @has_permissions(manage_messages=True)
     @shortcuts.command()
-    @app_commands.describe(prefix = "The prefix to use for shortcuts")
-    async def approve(self, ctx: DozerContext, prefix: str = "!"):
-        """Approve the server to use shortcuts"""
-        if ctx.author.id not in ctx.bot.config['developers']:
-            raise NotOwner('You are not a developer!')
-        setting = await ShortcutSetting.get_unique_by(guild_id = ctx.guild.id)
-        if setting is None:
-            setting = ShortcutSetting(guild_id = ctx.guild.id, approved = True, prefix = prefix)
-            await setting.update_or_add()
+    @app_commands.describe(prefix = "Prefix you want to use (such as ! or &)")
+    async def setprefix(self, ctx, prefix):
+        """Set the prefix to be used to respond to shortcuts for the server."""
+        setting: ShortcutSetting = await self.settings_cache.query_one(guild_id=ctx.guild.id)
+
+        if setting:
+            setting.prefix = prefix
         else:
-            setting.approved = True
-            await setting.update_or_add()
-        await ctx.send("Shortcuts approved for this guild", ephemeral = True)
+            setting = ShortcutSetting(guild_id=ctx.guild.id, prefix=prefix)
 
-    @shortcuts.command()
-    async def revoke(self, ctx: DozerContext):
-        """Revoke the server's ability to use shortcuts"""
-        if ctx.author.id not in ctx.bot.config['developers']:
-            raise NotOwner('You are not a developer!')
-
-        setting = await ShortcutSetting.get_unique_by(guild_id = ctx.guild.id)
-        if not setting or not setting.approved:
-            await ctx.send("Shortcuts were not enabled on this guild.", ephemeral = True)
-            return
-
-        setting.approved = False
         await setting.update_or_add()
+        self.settings_cache.invalidate_entry(guild_id=ctx.guild.id)
 
-        await ctx.send("Shortcuts have been revoked from this guild.", ephemeral = True)
+        await ctx.send(f"Set prefix to: {prefix}")
 
     @has_permissions(manage_messages = True)
     @shortcuts.command()
     @app_commands.describe(cmd_name = "shortcut name", cmd_msg = "stuff shortcut should display")
     async def add(self, ctx: DozerContext, cmd_name, *, cmd_msg):
-        """Add a shortcut to the server."""
-
-        cmd_name = cmd_name.casefold()
-
-        if not cmd_msg:
-            raise BadArgument("Command message is null or empty. How?")
-
-        setting = await ShortcutSetting.get_unique_by(guild_id = ctx.guild.id)
-        if setting is None or not setting.approved:
-            await ctx.send("This feature is not approved yet.", ephemeral = True)
-            return
-
+        """Set the message to be sent for a given shortcut name."""
+        settings: ShortcutSetting = await self.settings_cache.query_one(guild_id=ctx.guild.id)
+        if settings is None:
+            raise BadArgument("Set a prefix first!")
         if len(cmd_name) > self.MAX_LEN:
-            await ctx.send(f"Command names can only be up to {self.MAX_LEN} chars long.", ephemeral = True)
-            return
+            raise BadArgument(f"command names can only be up to {self.MAX_LEN} chars long")
+        if not cmd_msg:
+            raise BadArgument("can't have null message")
 
-        ent = await ShortcutEntry.get_unique_by(guild_id = ctx.guild.id, name = cmd_name)
+        ent: ShortcutEntry = await self.cache.query_one(guild_id=ctx.guild.id, name=cmd_name)
+
         if ent:
             ent.value = cmd_msg
-            await ent.update_or_add()
         else:
-            ent = ShortcutEntry(guild_id = ctx.guild.id, name = cmd_name, value = cmd_msg)
-            await ent.update_or_add()
+            ent = ShortcutEntry(guild_id=ctx.guild.id, name=cmd_name, value=cmd_msg)
 
-        await ctx.send("Updated command successfully.", ephemeral = True)
+        await ent.update_or_add()
+        self.cache.invalidate_entry(guild_id=ctx.guild.id, name=cmd_name)
+
+        await ctx.send("Updated command successfully.")
 
     @has_permissions(manage_messages = True)
     @shortcuts.command()
     @app_commands.describe(cmd_name = "shortcut name")
     async def remove(self, ctx: DozerContext, cmd_name):
-        """Remove a shortcut from the server."""
+        """Removes a shortcut from the server by name."""
+        ent: ShortcutEntry = await self.cache.query_one(guild_id=ctx.guild.id, name=cmd_name)
 
-        cmd_name = cmd_name.casefold()
-
-        setting = await ShortcutSetting.get_unique_by(guild_id = ctx.guild.id)
-        if setting is None or not setting.approved:
-            await ctx.send("This feature is not approved yet.", ephemeral = True)
-            return
-
-        ent = await ShortcutEntry.get_unique_by(guild_id = ctx.guild.id, name = cmd_name)
-        if not ent:
-            await ctx.send("No such shortcut.", ephemeral = True)
-            return
-
-        await ent.delete()
-        await ctx.send("Removed command successfully.", ephemeral = True)
+        if ent:
+            await ShortcutEntry.delete(guild_id=ctx.guild.id, name=cmd_name)
+            self.cache.invalidate_entry(guild_id=ctx.guild.id, name=cmd_name)
+            await ctx.send(f"Removed command {cmd_name} successfully.")
+        else:
+            await ctx.send(f"No command named {cmd_name} found!", ephemeral = True)
 
     @shortcuts.command()
     async def list(self, ctx: DozerContext):
         """List all shortcuts for this server."""
-        setting = await ShortcutSetting.get_unique_by(guild_id = ctx.guild.id)
-        if setting is None or not setting.approved:
-            await ctx.send("This feature is not approved yet.", ephemeral = True)
-            return
+        settings: ShortcutSetting = await self.settings_cache.query_one(guild_id=ctx.guild.id)
 
-        entries: List[ShortcutEntry] = await ShortcutEntry.get_by(guild_id = ctx.guild.id)
+        ents: List[ShortcutEntry] = await ShortcutEntry.get_by(guild_id=ctx.guild.id)
 
-        if not entries:
-            await ctx.send("There are no shortcuts for this server.", ephemeral = True)
+        if not ents:
+            await ctx.send("No shortcuts for this server!")
             return
 
         embed = None
-        for i, e in enumerate(entries):
+        for i, e in enumerate(ents):
             if i % 20 == 0:
                 if embed is not None:
-                    await ctx.send(embed = embed)
+                    await ctx.send(embed=embed)
                 embed = discord.Embed()
-                embed.title = "Shortcuts for this guild"
-            embed.add_field(name = setting.prefix + e.name, value = e.value[:1024])  # Max embed field length is 1024
+                embed.title = "Shortcuts for this server"
+            embed.add_field(name=settings.prefix + e.name, value=e.value[:1024])
 
         if embed.fields:
-            await ctx.send(embed = embed, ephemeral = True)
+            await ctx.send(embed=embed, ephemeral = True)
 
     @Cog.listener()
     async def on_ready(self):
@@ -222,36 +191,37 @@ class Shortcuts(commands.Cog):
             pass
 
 
+"""Database Tables"""
+
+
 class ShortcutSetting(db.DatabaseTable):
-    """Provides a DB config to track mutes."""
+    """Provides a DB config to track shortcut setting per guild."""
     __tablename__ = 'shortcut_settings'
-    __uniques__ = ("guild_id",)
+    __uniques__ = "guild_id"
 
     @classmethod
     async def initial_create(cls):
+        """Create the table in the database"""
         async with db.Pool.acquire() as conn:
             await conn.execute(f"""
             CREATE TABLE {cls.__tablename__} (
             guild_id bigint PRIMARY KEY NOT NULL,
-            approved boolean NOT NULL,
-            prefix text null
+            prefix varchar NOT NULL
             )""")
 
-    def __init__(self, guild_id: int, approved: bool, prefix: str = '!'):
+    def __init__(self, guild_id: int, prefix: str):
         super().__init__()
         self.guild_id = guild_id
-        self.approved = approved
         self.prefix = prefix
 
     @classmethod
     async def get_by(cls, **kwargs):
         results = await super().get_by(**kwargs)
-        results_list = []
+        result_list = []
         for result in results:
-            thing = ShortcutSetting(guild_id = result.get('guild_id'), approved = result.get('approved'),
-                                    prefix = result.get('prefix'))
-            results_list.append(thing)
-        return results_list
+            obj = ShortcutSetting(guild_id=result.get("guild_id"), prefix=result.get("prefix"))
+            result_list.append(obj)
+        return result_list
 
     @classmethod
     async def get_unique_by(cls, **kwargs) -> Optional[Self]:
@@ -267,22 +237,21 @@ class ShortcutSetting(db.DatabaseTable):
 
 
 class ShortcutEntry(db.DatabaseTable):
-    """Provides a DB config to track mutes."""
+    """Provides a DB config to track shortcut entries."""
     __tablename__ = 'shortcuts'
-    __uniques__ = ("guild_id", "name")
+    __uniques__ = 'guild_id, name'
 
     @classmethod
     async def initial_create(cls):
+        """Create the table in the database"""
         async with db.Pool.acquire() as conn:
-            query = f"""
+            await conn.execute(f"""
             CREATE TABLE {cls.__tablename__} (
-            guild_id bigint PRIMARY KEY NOT NULL,
-            name text NOT NULL,
+            guild_id bigint NOT NULL,
+            name varchar NOT NULL,
             value text NOT NULL,
-            UNIQUE (guild_id, name)
-            )"""
-            print(query)
-            await conn.execute(query)
+            PRIMARY KEY (guild_id, name)
+            )""")
 
     def __init__(self, guild_id: int, name: str, value: str):
         super().__init__()
@@ -293,12 +262,13 @@ class ShortcutEntry(db.DatabaseTable):
     @classmethod
     async def get_by(cls, **kwargs):
         results = await super().get_by(**kwargs)
-        results_list = []
+        result_list = []
         for result in results:
-            thing = ShortcutEntry(guild_id = result.get('guild_id'), name = result.get('name'),
-                                  value = result.get('value'))
-            results_list.append(thing)
-        return results_list
+            obj = ShortcutEntry(guild_id=result.get("guild_id"),
+                                name=result.get("name"),
+                                value=result.get("value"))
+            result_list.append(obj)
+        return result_list
 
     @classmethod
     async def get_unique_by(cls, **kwargs) -> Optional[Self]:
