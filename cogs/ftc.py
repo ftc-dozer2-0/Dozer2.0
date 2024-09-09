@@ -5,6 +5,10 @@ from asyncio import sleep
 from datetime import datetime
 from urllib.parse import urljoin, urlencode
 import base64
+import io
+import imgkit
+
+from urllib.parse import quote as urlquote, urljoin
 
 import aiohttp
 import async_timeout
@@ -18,7 +22,6 @@ from ._utils import *
 import db
 
 embed_color = discord.Color(0xed791e)
-
 __all__ = ['FTCEventsClient', 'FTCInfo', 'setup']
 
 
@@ -290,6 +293,34 @@ class FTCInfo(Cog):
                 text="Team information from FTC-Events")
 
             await ctx.send(embed=e)
+
+    @ftc.command(aliases=["weather", "betterweather", "cloudy"], invoke_without_command=True)
+    @bot_has_permissions(embed_links=True)
+    @app_commands.describe(team="The number of the team you're interested in getting weather for")
+    async def ftcweather(self, ctx: DozerContext, team: int):
+        """Get the weather for an FTC team."""
+        print(team)
+        res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team)}))
+        if res is None:
+            return
+        td = await res.json(content_type = None)
+        td = td['teams'][0]
+        units = 'm'
+        # REEEEEEEEEEEE
+        if td['country'] == "USA":
+            units = 'u'
+
+        url = "https://wttr.in/" + f"{td['city']}+{td['stateProv']}+{td['country']}?{units}0"
+        data = await self.http_session.get(url)
+        imgkit.from_url(url, f"{td['teamNumber']}_weather.png")
+        e = discord.Embed(title = f"Current weather for FTC Team {team}:", url = url)
+        e.set_image(url = f"attachment://{td['teamNumber']}_weather.png")
+        e.set_footer(text = "Powered by wttr.in and FTC-Events")
+        await ctx.send(embed = e, file = discord.File(f"{td['teamNumber']}_weather.png"))
+
+    ftcweather.example_usage = """
+        `{prefix}ftcweather ftc 11260` - show the current weather for FTC team 11260, Up-A-Creek Robotics
+        """
 
     @command()
     @bot_has_permissions(embed_links=True)
