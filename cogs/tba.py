@@ -253,6 +253,9 @@ class TBA(Cog):
             td = await self.bot.cogs["FTCInfo"].ftcweather(ctx, team_num)
             if not td:
                 raise BadArgument(f'Team {team_num} does not exist.')
+            td = self.TeamData()
+            td.__dict__.update(team_data_dict['seasons'][0])
+
         else:
             raise BadArgument('`team_program` should be one of [`frc`, `ftc`]')
 

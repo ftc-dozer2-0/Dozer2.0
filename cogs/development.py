@@ -142,7 +142,7 @@ class Development(commands.Cog):
             code = code.strip('`').strip()  # Remove single-line code blocks, if necessary
 
         logger.info(f"Evaluating code at request of {ctx.author} ({ctx.author.id}) in '{ctx.guild}' #{ctx.channel}:")
-        logchannel = await ctx.bot.get_guild(1088700196675919872).get_channel(1263728715398119476)
+        logchannel = ctx.bot.get_guild(1088700196675919872).get_channel(1263728715398119476)
         await logchannel.send(f"Evaluating code at request of {ctx.author} ({ctx.author.id}) in '{ctx.guild}' #{ctx.channel} (<#{ctx.channel.id}>):")
         logger.info("-" * 32)
         for line in code.splitlines():
