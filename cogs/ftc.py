@@ -5,8 +5,8 @@ from asyncio import sleep
 from datetime import datetime
 from urllib.parse import urljoin, urlencode
 import base64
-import io
 import imgkit
+import os
 
 from urllib.parse import quote as urlquote, urljoin
 
@@ -294,7 +294,7 @@ class FTCInfo(Cog):
 
             await ctx.send(embed=e)
 
-    @ftc.command(aliases=["weather", "betterweather", "cloudy"])
+    @ftc.command(aliases=["ftcweather", "betterweather", "cloudy", "sunny", "temp", "grass"])
     @bot_has_permissions(embed_links=True)
     @app_commands.describe(team="The number of the team you're interested in getting weather for")
     async def weather(self, ctx: DozerContext, team: int):
@@ -325,8 +325,8 @@ class FTCInfo(Cog):
         if os.path.exists(f"{td['teamNumber']}_weather.png"):
             os.remove(f"{td['teamNumber']}_weather.png")
 
-    ftcweather.example_usage = """
-        `{prefix}ftcweather ftc 11260` - show the current weather for FTC team 11260, Up-A-Creek Robotics
+    weather.example_usage = """
+        `{prefix}weather ftc 11260` - show the current weather for FTC team 11260, Up-A-Creek Robotics
         """
 
     @command()
