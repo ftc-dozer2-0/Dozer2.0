@@ -235,7 +235,7 @@ class FTCInfo(Cog):
                                          self.http_session)
         self.scparser = ScoutParser(self.http_session)
 
-    @group(invoke_without_command=True, aliases=["ftcteam", "toa", "toateam", "ftcteaminfo"])
+    @group(aliases=["ftcteam", "toa", "toateam", "ftcteaminfo"])
     async def ftc(self, ctx: DozerContext, team_num: int):
         """
         Get information on an FTC team from FTC-Events.
@@ -294,12 +294,12 @@ class FTCInfo(Cog):
 
             await ctx.send(embed=e)
 
-    @ftc.command(aliases=["weather", "betterweather", "cloudy"], invoke_without_command=True)
+    @ftc.command(aliases=["weather", "betterweather", "cloudy"])
     @bot_has_permissions(embed_links=True)
     @app_commands.describe(team="The number of the team you're interested in getting weather for")
-    async def ftcweather(self, ctx: DozerContext, team: int):
+    async def weather(self, ctx: DozerContext, team: int):
         """Get the weather for an FTC team."""
-        print(team)
+        #print(team)
         res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team)}))
         if res is None:
             return
@@ -312,11 +312,18 @@ class FTCInfo(Cog):
 
         url = "https://wttr.in/" + f"{td['city']}+{td['stateProv']}+{td['country']}?{units}0"
         data = await self.http_session.get(url)
-        imgkit.from_url(url, f"{td['teamNumber']}_weather.png")
+        options = {
+            'format': 'png',
+            'width': '120',
+            'zoom': '2'
+        }
+        imgkit.from_url(url, f"{td['teamNumber']}_weather.png", options=options)
         e = discord.Embed(title = f"Current weather for FTC Team {team}:", url = url)
         e.set_image(url = f"attachment://{td['teamNumber']}_weather.png")
         e.set_footer(text = "Powered by wttr.in and FTC-Events")
         await ctx.send(embed = e, file = discord.File(f"{td['teamNumber']}_weather.png"))
+        if os.path.exists(f"{td['teamNumber']}_weather.png"):
+            os.remove(f"{td['teamNumber']}_weather.png")
 
     ftcweather.example_usage = """
         `{prefix}ftcweather ftc 11260` - show the current weather for FTC team 11260, Up-A-Creek Robotics
