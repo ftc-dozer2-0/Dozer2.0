@@ -357,9 +357,9 @@ class Moderation(Cog):
         else:
             user = Mute(member_id=member.id, guild_id=member.guild.id)
             await user.update_or_add()
-            await self.perm_override(member, send_messages=False, add_reactions=False, speak=False, stream=False,
-                                     create_public_threads=False, create_private_threads=False)
-
+            #await self.perm_override(member, send_messages=False, add_reactions=False, speak=False, stream=False,
+            #                         create_public_threads=False, create_private_threads=False)
+            await member.timeout(datetime.timedelta(seconds=seconds), reason=reason)
             self.bot.loop.create_task(
                 self.punishment_timer(seconds, member, Mute, reason, actor or member.guild.me,
                                       orig_channel=orig_channel))
@@ -372,8 +372,9 @@ class Moderation(Cog):
             await Mute.delete(member_id=member.id, guild_id=member.guild.id)
             await PunishmentTimerRecords.delete(target_id=member.id, guild_id=member.guild.id,
                                                 type_of_punishment=Mute.type)
-            await self.perm_override(member, send_messages=None, add_reactions=None, speak=None, stream=None,
-                                     create_public_threads=None, create_private_threads=None)
+            #await self.perm_override(member, send_messages=None, add_reactions=None, speak=None, stream=None,
+            #                         create_public_threads=None, create_private_threads=None)
+            await member.timeout(datetime.timedelta(seconds=0))
             await self.restart_all_timers()
             return True
         else:
