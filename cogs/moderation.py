@@ -348,17 +348,21 @@ class Moderation(Cog):
         orig_channel: the channel of the request origin
         """
         results = await Mute.get_by(guild_id=member.guild.id, member_id=member.id)
+        seconds = min(seconds, 28 * 24 * 3600 - 60)  # discord max is 28 days, minus 1 second
         if results:
             await PunishmentTimerRecords.delete(target_id=member.id, guild_id=member.guild.id, type_of_punishment=Mute.type)
             await self.restart_all_timers()
             self.bot.loop.create_task(
                 self.punishment_timer(seconds, member, Mute, reason, actor or member.guild.me, orig_channel=orig_channel))
+            await member.timeout(datetime.timedelta(seconds=seconds))
             return False  # member already muted, edit preexisting record
         else:
             user = Mute(member_id=member.id, guild_id=member.guild.id)
             await user.update_or_add()
             #await self.perm_override(member, send_messages=False, add_reactions=False, speak=False, stream=False,
             #                         create_public_threads=False, create_private_threads=False)
+            if seconds == 0:
+                seconds = 28*24*3600-60  # discord max is 28 days, minus 1 second
             await member.timeout(datetime.timedelta(seconds=seconds), reason=reason)
             self.bot.loop.create_task(
                 self.punishment_timer(seconds, member, Mute, reason, actor or member.guild.me,
