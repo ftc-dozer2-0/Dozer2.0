@@ -109,6 +109,27 @@ class DatabaseTable:
                 """
             await conn.execute(statement, *values)
 
+    async def add(self):
+        """Assign the attribute to this object, then call this method to either the object if it doesn't exist in
+        the DB."""
+        keys = []
+        values = []
+        for var, value in self.__dict__.items():
+            # Done so that the two are guaranteed to be in the same order, which isn't true of keys() and values()
+            if value is self.nullify:
+                keys.append(var)
+                values.append(None)
+            elif value is not None:
+                keys.append(var)
+                values.append(value)
+        async with Pool.acquire() as conn:
+            statement = f"""
+            INSERT INTO {self.__tablename__} ({", ".join(keys)})
+            VALUES({','.join(f'${i + 1}' for i in range(len(values)))})
+            ON CONFLICT ({self.__uniques__}) DO NOTHING;
+            """
+            await conn.execute(statement, *values)
+
     def __repr__(self):
         values = ""
         first = True

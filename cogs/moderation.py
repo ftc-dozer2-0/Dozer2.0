@@ -433,29 +433,13 @@ class Moderation(Cog):
         else:
             user = Deafen(member_id = member.id, guild_id = member.guild.id, self_inflicted = self_inflicted)
             await user.update_or_add()
-            # Save current member roles to MissingRole table
-            saved = await MissingRole.get_by(guild_id = member.guild.id, member_id = member.id)
-            saved_roles = [role.role_id for role in
-                           saved[1:]]  # Get a list of saved role IDs, skipping the first element if necessary
-
-            print(f"Saved roles: {saved_roles}")
-            for role in member.roles[1:]:  # Exclude the @everyone role
-                if role.id not in saved_roles:
-                    print(f"Saving new role: {role}")
-                    db_member = MissingRole(role_id = role.id, role_name = role.name, guild_id = member.guild.id,
-                                            member_id = member.id)
-                    await db_member.update_or_add()
-            # Remove roles that are saved but no longer present in member's current roles
-            current_role_ids = [role.id for role in
-                                member.roles[1:]]  # Get list of current role IDs, excluding @everyone
-            print(current_role_ids)
-            for saved_role in saved[1:]:
-                if saved_role.role_id not in current_role_ids:
-                    await MissingRole(role_id = saved_role.role_id, guild_id = member.guild.id,
-                                      member_id = member.id, role_name = saved_role.role_name).delete()
-                    print(f"Removing role: {saved_role}")
-            # await self.perm_override(member, read_messages=False)
+            current_role_ids = [role.id for role in member.roles[1:]]
             await member.edit(roles = [member.guild.get_role(deafen.deafen_role)])
+            for role in current_role_ids:
+                print(role)
+                if role != deafen.deafen_role:
+                    print(f"Adding role {role}")
+                    await PausedRole(guild_id = member.guild.id, member_id = member.id, paused_role_id = role).add()
             if self_inflicted and seconds == 0:
                 seconds = 30  # prevent lockout in case of bad argument
             self.bot.loop.create_task(
@@ -473,15 +457,17 @@ class Moderation(Cog):
         if results:
             # await self.perm_override(member=member, read_messages=None)
             deafen = await DeafenRole.get_by(guild_id = member.guild.id)
-            restore = await MissingRole.get_by(guild_id = member.guild.id, member_id = member.id)
+            restore = await PausedRole.get_by(guild_id = member.guild.id, member_id = member.id)
             roles = []
+            print(f"Restore: {restore}")
             for role in restore:
-                if role.role_id != deafen[0].deafen_role:
-                    roles.append(member.guild.get_role(role.role_id))
+                if role.paused_role_id != deafen[0].deafen_role:
+                    roles.append(member.guild.get_role(role.paused_role_id))
             await member.edit(roles = roles)
             await PunishmentTimerRecords.delete(target_id = member.id, guild_id = member.guild.id,
                                                 type_of_punishment = Deafen.type)
             await self.restart_all_timers()
+            await PausedRole.delete(member_id = member.id, guild_id = member.guild.id)
             await Deafen.delete(member_id = member.id, guild_id = member.guild.id)
             truths = [True, results[0].self_inflicted]
             return truths
@@ -1380,6 +1366,39 @@ class DeafenRole(db.DatabaseTable):
         result_list = []
         for result in results:
             obj = DeafenRole(deafen_role = result.get("deafen_role"), guild_id = result.get("guild_id"))
+            result_list.append(obj)
+        return result_list
+
+
+class PausedRole(db.DatabaseTable):
+    """Holds all roles that were removed for a deafen/mute"""
+    __tablename__ = 'paused_roles'
+    __uniques__ = 'member_id, paused_role_id'
+
+    @classmethod
+    async def initial_create(cls):
+        """Create the table in the database"""
+        async with db.Pool.acquire() as conn:
+            await conn.execute(f"""
+            CREATE TABLE {cls.__tablename__} (
+            guild_id bigint not null,
+            member_id bigint not null,
+            paused_role_id bigint not null,
+            PRIMARY KEY (paused_role_id, member_id)
+            )""")
+
+    def __init__(self, guild_id: int, member_id: int, paused_role_id: int = None):
+        super().__init__()
+        self.guild_id = guild_id
+        self.member_id = member_id
+        self.paused_role_id = paused_role_id
+
+    @classmethod
+    async def get_by(cls, **kwargs):
+        results = await super().get_by(**kwargs)
+        result_list = []
+        for result in results:
+            obj = PausedRole(paused_role_id = result.get("paused_role_id"), member_id = result.get("member_id"), guild_id = result.get("guild_id"))
             result_list.append(obj)
         return result_list
 
