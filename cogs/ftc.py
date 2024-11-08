@@ -16,6 +16,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from discord.utils import escape_markdown
+from docutils.nodes import description
 
 from context import DozerContext
 from ._utils import *
@@ -310,15 +311,16 @@ class FTCInfo(Cog):
         if td['country'] == "USA":
             units = 'u'
 
-        url = "https://wttr.in/" + f"{td['city']}+{td['stateProv']}+{td['country']}?{units}0"
+        url = "https://wttr.in/" + f"{td['city']}+{td['stateProv']}+{td['country']}?{units}0&format=3"
         data = await self.http_session.get(url)
+        print(await data.text())
         options = {
             'format': 'png',
             'width': '120',
             'zoom': '2'
         }
         imgkit.from_url(url, f"{td['teamNumber']}_weather.png", options=options)
-        e = discord.Embed(title = f"Current weather for FTC Team {team}:", url = url)
+        e = discord.Embed(title = f"Current weather for FTC Team {team}:", url = url, description = f"Weather for {td['teamNumber']}: {data}")
         e.set_image(url = f"attachment://{td['teamNumber']}_weather.png")
         e.set_footer(text = "Powered by wttr.in and FTC-Events")
         await ctx.send(embed = e, file = discord.File(f"{td['teamNumber']}_weather.png"))
