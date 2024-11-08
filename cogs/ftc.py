@@ -309,8 +309,9 @@ class FTCInfo(Cog):
         if td['country'] == "USA":
             units = 'u'
 
-        url = "https://wttr.in/" + f"{td['city']}+{td['stateProv']}+{td['country']}?{units}0&format=3"
-        data = await self.http_session.get(url)
+        reader_url = "https://wttr.in/" + f"{td['city']}+{td['stateProv']}+{td['country']}?{units}0&format=3"
+        url = f"https://wttr.in/{td['city']}+{td['stateProv']}+{td['country']}?{units}0"
+        data = await self.http_session.get(reader_url)
         # print(await data.text())
         options = {
             'format': 'png',
