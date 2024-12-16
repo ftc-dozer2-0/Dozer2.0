@@ -20,7 +20,7 @@ class Fun(commands.Cog):
         self.bot = bot
 
     @guild_only()
-    @cooldown(1, 20, BucketType.user) if not dev_check() else cooldown(10, 0, BucketType.user)
+    @cooldown(1, 20, BucketType.user)
     @commands.hybrid_command(name = "fight", aliases = ["duel"], pass_context = True)
     @app_commands.describe(opponent = "The user you want to fight")
     async def fight(self, ctx: DozerContext, opponent: discord.Member):

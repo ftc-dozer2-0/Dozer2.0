@@ -47,7 +47,7 @@ class FTCEventsClient:
         """Make an async request at the specified endpoint, waiting to let the ratelimit cool off."""
 
         if season is None:
-            season = FTCEventsClient.get_season()
+            season = 2024
 
         if self.ratelimit:
             # this will delay a request to avoid the ratelimit
@@ -88,7 +88,7 @@ class FTCEventsClient:
             0]
         if kickoff > today:
             return today.year - 1
-        return today.year
+        return 2024
 
     @staticmethod
     def date_parse(date_str):
@@ -254,8 +254,8 @@ class FTCInfo(Cog):
         if team_num < 1:
             await ctx.send("Invalid team number specified!")
             return
-        if season < 2019 or season > FTCEventsClient.get_season():
-            await ctx.send("Invalid season! Data is only available for seasons after 2019.")
+#        if season < 2019 or season > 2024:
+#            await ctx.send("Invalid season! Data is only available for seasons after 2019.")
         res = await self.ftcevents.req("teams?" + urlencode({'teamNumber': str(team_num)}), season)
         async with res:
             if res.status == 400:

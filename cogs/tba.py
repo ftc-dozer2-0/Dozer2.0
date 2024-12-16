@@ -250,7 +250,7 @@ class TBA(Cog):
             except aiotba.http.AioTBAError:
                 raise BadArgument('Team {} does not exist.'.format(team_num))
         elif team_program.lower() == "ftc":
-            td = await self.bot.cogs["FTCInfo"].ftcweather(ctx, team_num)
+            td = await self.bot.cogs["FTCInfo"].weather(ctx, team_num)
             if not td:
                 raise BadArgument(f'Team {team_num} does not exist.')
             td = self.TeamData()
