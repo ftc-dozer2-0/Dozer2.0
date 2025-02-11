@@ -132,7 +132,8 @@ class Actionlog(Cog):
         message_channel = self.bot.get_channel(int(payload.channel_id))
         message_ids = payload.message_ids
         cached_messages = payload.cached_messages
-
+        if cached_messages[0].author == self.bot.user:
+            return
         message_log_channel = await self.edit_delete_config.query_one(guild_id=guild.id)
         if message_log_channel is not None:
             channel = guild.get_channel(message_log_channel.messagelog_channel)
