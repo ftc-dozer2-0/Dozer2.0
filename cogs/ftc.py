@@ -3,12 +3,10 @@ import asyncio
 import json
 from asyncio import sleep
 from datetime import datetime
-from urllib.parse import urljoin, urlencode
+from urllib.parse import urljoin, urlencode, quote as urlquote
 import base64
 import imgkit
 import os
-
-from urllib.parse import quote as urlquote, urljoin
 
 import aiohttp
 import async_timeout
@@ -235,12 +233,12 @@ class FTCInfo(Cog):
         self.scparser = ScoutParser(self.http_session)
 
     @group(aliases=["ftcteam", "toa", "toateam", "ftcteaminfo"])
-    async def ftc(self, ctx: DozerContext, team_num: int):
+    async def ftc(self, ctx: DozerContext, *, team_name: str):
         """
         Get information on an FTC team from FTC-Events.
         If no subcommand is specified, the `team` subcommand is inferred, and the argument is taken as a team number.
         """
-        await self.team.callback(self, ctx, team_num)  # This works but Pylint throws an error
+        await self.searchteam.callback(self, ctx, team_name)  # This works but Pylint throws an error
 
     ftc.example_usage = """
     `{prefix}ftc 5667` - show information on team 5667, Robominers
@@ -296,7 +294,7 @@ class FTCInfo(Cog):
     @ftc.command(aliases=["teamsearch", "ftcsearch", "search"])
     @bot_has_permissions(embed_links=True)
     @app_commands.describe(team_name="The name of the team you're interested in searching for")
-    async def searchteam(self, ctx: DozerContext,*, team_name: str):
+    async def searchteam(self, ctx: DozerContext, team_name: str):
         """Search for an FTC team by name."""
         if team_name.isdigit():
             await self.team.callback(self, ctx, int(team_name))
